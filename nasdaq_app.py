@@ -5,6 +5,8 @@ import numpy as np
 import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
+import finnhub  # for fetching news
+
 
 st.set_page_config(layout="wide", page_title="Stock vs NASDAQ (^IXIC) — Weekly Comparison")
 
@@ -150,6 +152,19 @@ if len(comp_rows) == 0:
     st.write("No aligned weekly data for selected tickers and index in the requested range.")
     st.stop()
 
+# # Build comparison table (weekly summary)
+# summary_df = pd.DataFrame([{
+#     "Ticker": r["ticker"],
+#     "MarketCap (USD)": r["marketCap"],
+#     "Weeks": r["weeks_available"],
+#     "Avg diff (%)": round(r["avg_diff_pct"], 3),
+#     "Latest diff (%)": round(r["latest_diff_pct"], 3),
+#     "Status": r["status"]
+# } for r in comp_rows]).set_index("Ticker")
+
+# st.subheader("Weekly comparison summary")
+# st.dataframe(summary_df)
+
 # Build comparison table (weekly summary)
 summary_df = pd.DataFrame([{
     "Ticker": r["ticker"],
@@ -160,8 +175,18 @@ summary_df = pd.DataFrame([{
     "Status": r["status"]
 } for r in comp_rows]).set_index("Ticker")
 
+# Styling function
+def highlight_status(row):
+    if row["Status"] == "outperform":
+        return ["background-color: #d4edda"]*len(row)  # light green
+    elif row["Status"] == "underperform":
+        return ["background-color: #f8d7da"]*len(row)  # light red
+    else:
+        return [""]*len(row)  # neutral
+
 st.subheader("Weekly comparison summary")
-st.dataframe(summary_df)
+st.dataframe(summary_df.style.apply(highlight_status, axis=1))
+
 
 # Interactive Plotly weekly chart
 st.subheader("Interactive weekly % difference chart")
@@ -229,33 +254,77 @@ for r in comp_rows:
 
 # Fetch and show news for current overperformers (latest diff > threshold)
 # Fetch and show news for current outperformers (latest diff > threshold)
+# if show_news:
+#     st.subheader("Latest news for current outperformers (> +{:.1f}%)".format(threshold_pct))
+#     outperf = [r for r in comp_rows if r["latest_diff_pct"] > threshold_pct]
+#     if not outperf:
+#         st.write("No current outperformers above threshold.")
+#     else:
+#         for r in outperf:
+#             t = r["ticker"]
+#             st.markdown(f"**{t}**")
+
+#             # create a fresh Ticker object here (not cached)
+#             tk = yf.Ticker(t)
+#             try:
+#                 articles = tk.get_news() if hasattr(tk, "get_news") else getattr(tk, "news", [])
+#             except Exception:
+#                 articles = []
+
+#             if not articles:
+#                 st.write("No news found for this ticker.")
+#             else:
+#                 for a in articles[:5]:
+#                     title = a.get("title") or str(a)[:80]
+#                     link = a.get("link") or a.get("url")
+#                     if link:
+#                         st.markdown(f"- [{title}]({link})")
+#                     else:
+#                         st.markdown(f"- {title}")
+
+# Fetch and show news for current overperformers (latest diff > threshold)
 if show_news:
-    st.subheader("Latest news for current outperformers (> +{:.1f}%)".format(threshold_pct))
+    st.subheader(f"Latest news for current outperformers (> +{threshold_pct}%)")
     outperf = [r for r in comp_rows if r["latest_diff_pct"] > threshold_pct]
+    
     if not outperf:
         st.write("No current outperformers above threshold.")
     else:
+        import finnhub
+        # ⚡ Setup Finnhub client
+        API_KEY = "YOUR_FINNHUB_API_KEY"  # replace with your key
+        finnhub_client = finnhub.Client(api_key=API_KEY)
+        
+        days_back = 30  # fetch news from last 30 days
+        
         for r in outperf:
             t = r["ticker"]
             st.markdown(f"**{t}**")
-
-            # create a fresh Ticker object here (not cached)
-            tk = yf.Ticker(t)
+            
+            _from = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+            _to = datetime.now().strftime('%Y-%m-%d')
+            
             try:
-                articles = tk.get_news() if hasattr(tk, "get_news") else getattr(tk, "news", [])
-            except Exception:
-                articles = []
-
-            if not articles:
+                news = finnhub_client.company_news(symbol=t, _from=_from, to=_to)
+            except Exception as e:
+                st.write(f"Error fetching news for {t}: {e}")
+                news = []
+            
+            if not news:
                 st.write("No news found for this ticker.")
             else:
-                for a in articles[:5]:
-                    title = a.get("title") or str(a)[:80]
-                    link = a.get("link") or a.get("url")
-                    if link:
-                        st.markdown(f"- [{title}]({link})")
+                # display top 5 news with clickable links and summary
+                for a in news[:5]:
+                    headline = a.get("headline", "No title")
+                    url = a.get("url")
+                    summary = a.get("summary", "No summary available")
+                    date = pd.to_datetime(a.get("datetime", None), unit='s').strftime('%Y-%m-%d') if a.get("datetime") else ""
+                    if url:
+                        st.markdown(f"- [{headline}]({url}) ({date})")
                     else:
-                        st.markdown(f"- {title}")
+                        st.markdown(f"- {headline} ({date})")
+                    st.markdown(f"  > {summary}")
+
 
 
 st.markdown("---")
