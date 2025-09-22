@@ -331,101 +331,221 @@
 # st.markdown("---")
 # st.caption("Data source: Yahoo Finance via yfinance. Index: Nasdaq Composite (^IXIC).")
 
+# stock_vs_nasdaq_app.py
+import finnhub
 import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
-import plotly.graph_objs as go
+import plotly.graph_objects as go
+from datetime import datetime, timedelta
 
-st.set_page_config(page_title="Stock vs NASDAQ Comparison", layout="wide")
+# ---- Streamlit config ----
+st.set_page_config(layout="wide", page_title="Stock vs NASDAQ (^IXIC) — Weekly Comparison")
 
-st.title("📊 Stock vs NASDAQ Comparison App")
+# ---- Sidebar controls ----
+st.sidebar.header("Controls")
+mode = st.sidebar.radio("Choose mode", ["Select tickers", "Auto-show last week outperformers"])
 
-# Sidebar inputs
-tickers = st.sidebar.text_input("Enter stock tickers (comma-separated):", "AAPL, MSFT, GOOGL").split(",")
-tickers = [t.strip().upper() for t in tickers if t.strip()]
+weeks = st.sidebar.slider("Number of weeks to compare", min_value=1, max_value=49, value=12)
+threshold_pct = st.sidebar.number_input("Out/Underperform threshold (%)", value=5.0, min_value=0.1, step=0.1)
+show_news = st.sidebar.checkbox("Fetch latest news for overperformers", value=True)
 
-start_date = st.sidebar.date_input("Start Date", pd.to_datetime("2020-01-01"))
-end_date = st.sidebar.date_input("End Date", pd.to_datetime("today"))
+# Static universe (NASDAQ-100 tickers)
+nasdaq_100 = [
+    "AAPL","MSFT","AMZN","GOOGL","GOOG","META","TSLA","NVDA","NFLX","PEP","COST","AVGO","CSCO","ADBE","TXN","CMCSA","AMD","INTC","QCOM","AMGN",
+    "CHTR","SBUX","HON","MDLZ","INTU","AMAT","PYPL","BKNG","ADI","LRCX","GILD","MU","ISRG","CSX","PDD","REGN","VRTX","MRNA","KDP","MNST","MELI",
+    "ADP","ADI","PANW","IDXX","FTNT","KHC","NXPI","MAR","ORLY","ODFL","CTAS","WDAY","XEL","CDNS","SNPS","TEAM","ROST","AZN","ABNB","PAYX","PCAR",
+    "DLTR","KDP","MRVL","ALGN","CPRT","CHTR","VRSK","CRWD","CEG","ZS","DDOG","SPLK","LULU","BKR","LCID","ZBRA"
+]
 
-threshold = st.sidebar.number_input("Outperformance Threshold (%)", value=5.0, step=0.5)
+# ---- Data fetch ----
+@st.cache_data(show_spinner=False)
+def fetch_tickers_info(tlist):
+    info = {}
+    for t in tlist:
+        tk = yf.Ticker(t)
+        try:
+            data = tk.history(period="2y", auto_adjust=False)
+        except Exception:
+            data = pd.DataFrame()
+        try:
+            mc = tk.info.get("marketCap", None)
+        except Exception:
+            mc = None
+        info[t] = {"history": data, "marketCap": mc}
+    return info
 
-market_cap_min, market_cap_max = st.sidebar.slider(
-    "Market Cap Range (in billions)", 5, 2000, (5, 2000)
-)
+# ---- Helper for weekly returns ----
+def weekly_close_pct(df):
+    if df.empty:
+        return pd.Series(dtype=float)
+    w = df["Close"].resample("W-FRI").last().dropna()
+    pct = w.pct_change().dropna() * 100.0
+    pct.name = "weekly_pct"
+    return pct
 
-# Download data
-@st.cache_data
-def load_data(tickers, start, end):
-    data = yf.download(tickers + ["^IXIC"], start=start, end=end, group_by="ticker", auto_adjust=True)
-    return data
+# ---- Fetch data for index ----
+index_ticker = "^IXIC"
+index_info = fetch_tickers_info([index_ticker])
+index_weekly = weekly_close_pct(index_info[index_ticker]["history"])
+if index_weekly.empty:
+    st.error("Could not fetch NASDAQ data.")
+    st.stop()
 
-if tickers:
-    data = load_data(tickers, start_date, end_date)
+index_weekly = index_weekly.tail(weeks)
+index_weekly.index = index_weekly.index.date
 
-    if "^IXIC" not in data:
-        st.error("Could not fetch NASDAQ (^IXIC) data. Please try again later.")
-    else:
-        nasdaq = data["^IXIC"]["Close"]
-        results = []
-
-        st.subheader("Cumulative Performance Charts")
-
-        fig_all = go.Figure()
-        for ticker in tickers:
-            try:
-                stock = data[ticker]["Close"]
-                stock = stock.dropna()
-
-                weekly_returns_stock = stock.resample("W-FRI").ffill().pct_change().dropna()
-                weekly_returns_nasdaq = nasdaq.resample("W-FRI").ffill().pct_change().dropna()
-
-                cumulative_stock = (1 + weekly_returns_stock).cumprod() - 1
-                cumulative_nasdaq = (1 + weekly_returns_nasdaq).cumprod() - 1
-
-                # Add to combined chart
-                fig_all.add_trace(go.Scatter(
-                    x=cumulative_stock.index,
-                    y=cumulative_stock,
-                    mode="lines",
-                    name=f"{ticker} (Cumulative)"
-                ))
-
-                # Add NASDAQ for comparison
-                fig_all.add_trace(go.Scatter(
-                    x=cumulative_nasdaq.index,
-                    y=cumulative_nasdaq,
-                    mode="lines",
-                    name="NASDAQ (Cumulative)",
-                    line=dict(dash="dot")
-                ))
-
-                # Store results
-                cum_return_stock = (cumulative_stock.iloc[-1]) * 100
-                cum_return_nasdaq = (cumulative_nasdaq.iloc[-1]) * 100
-                diff = cum_return_stock - cum_return_nasdaq
-
-                results.append({
-                    "Ticker": ticker,
-                    "Stock Cumulative %": cum_return_stock,
-                    "NASDAQ Cumulative %": cum_return_nasdaq,
-                    "Difference %": diff,
-                    "Outperform": "Yes" if diff > threshold else "No"
-                })
-
-            except Exception as e:
-                st.warning(f"Error processing {ticker}: {e}")
-
-        st.plotly_chart(fig_all, use_container_width=True)
-
-        if results:
-            st.subheader("Summary Table")
-            results_df = pd.DataFrame(results)
-
-            def highlight(row):
-                color = "#b6f7c1" if row["Outperform"] == "Yes" else "#f7b6b6"
-                return [f"background-color: {color}"] * len(row)
-
-            st.dataframe(results_df.style.apply(highlight, axis=1), use_container_width=True)
+# ---- Mode logic ----
+if mode == "Select tickers":
+    tickers = st.sidebar.multiselect("Select tickers (market cap >5B)", nasdaq_100, default=["AAPL","MSFT","TSLA"])
+    if not tickers:
+        st.warning("Select at least one ticker")
+        st.stop()
 else:
-    st.info("Please enter at least one ticker symbol.")
+    tickers = nasdaq_100
+
+# ---- Fetch data ----
+with st.spinner("Fetching stock data..."):
+    info = fetch_tickers_info(tickers + [index_ticker])
+
+# ---- Filter ----
+filtered = []
+filtered_reasons = {}
+for t in tickers:
+    mcap = info[t]["marketCap"]
+    if mcap is None or mcap < 5e9:
+        filtered_reasons[t] = "market cap <5B or unknown"
+        continue
+    if info[t]["history"].empty:
+        filtered_reasons[t] = "no price history"
+        continue
+    filtered.append(t)
+
+tickers = filtered
+if not tickers:
+    st.error("No tickers passed the filter")
+    st.stop()
+
+# ---- Build comparisons ----
+comp_rows = []
+for t in tickers:
+    s_weekly = weekly_close_pct(info[t]["history"])
+    s_weekly.index = s_weekly.index.date
+    aligned = pd.DataFrame({
+        "stock_weekly_pct": s_weekly,
+        "index_weekly_pct": index_weekly
+    }).dropna().tail(weeks)
+    if aligned.empty:
+        continue
+    aligned["diff_pct"] = aligned["stock_weekly_pct"] - aligned["index_weekly_pct"]
+    avg_diff = aligned["diff_pct"].mean()
+    latest_diff = aligned["diff_pct"].iloc[-1]
+    status = "neutral"
+    if latest_diff > threshold_pct:
+        status = "outperform"
+    elif latest_diff < -threshold_pct:
+        status = "underperform"
+    comp_rows.append({
+        "ticker": t,
+        "marketCap": info[t]["marketCap"],
+        "weeks_available": len(aligned),
+        "avg_diff_pct": avg_diff,
+        "latest_diff_pct": latest_diff,
+        "status": status,
+        "aligned": aligned
+    })
+
+if not comp_rows:
+    st.write("No data to display.")
+    st.stop()
+
+# ---- Summary table ----
+summary_df = pd.DataFrame([{
+    "Ticker": r["ticker"],
+    "MarketCap (USD)": r["marketCap"],
+    "Weeks": r["weeks_available"],
+    "Avg diff (%)": round(r["avg_diff_pct"], 3),
+    "Latest diff (%)": round(r["latest_diff_pct"], 3),
+    "Status": r["status"]
+} for r in comp_rows]).set_index("Ticker")
+
+# Highlight styling
+def highlight_status(row):
+    if row["Status"] == "outperform":
+        return ["background-color: #d4edda"]*len(row)
+    elif row["Status"] == "underperform":
+        return ["background-color: #f8d7da"]*len(row)
+    return [""]*len(row)
+
+st.subheader("Weekly comparison summary")
+st.dataframe(summary_df.style.apply(highlight_status, axis=1))
+
+# ---- Interactive Plotly weekly chart ----
+fig = go.Figure()
+for r in comp_rows:
+    df = r["aligned"].reset_index().rename(columns={"index":"date"})
+    fig.add_trace(go.Scatter(
+        x=df["date"], y=df["diff_pct"], mode="lines+markers", name=r["ticker"]
+    ))
+
+fig.update_layout(
+    xaxis_title="Date (Weekly, Fri close)",
+    yaxis_title="Stock % - NASDAQ % (weekly)",
+    legend_title="Ticker",
+    hovermode="closest", height=600
+)
+st.subheader("Weekly % difference chart")
+st.plotly_chart(fig, use_container_width=True)
+
+# ---- Cumulative returns ----
+cum_fig = go.Figure()
+index_cum = (1 + index_weekly/100).cumprod() - 1
+cum_fig.add_trace(go.Scatter(x=index_weekly.index, y=index_cum*100, mode="lines", name="NASDAQ"))
+
+for r in comp_rows:
+    sw = r["aligned"]["stock_weekly_pct"] / 100
+    cum = (1 + sw).cumprod() - 1
+    cum_fig.add_trace(go.Scatter(x=r["aligned"].index, y=cum*100, mode="lines", name=r["ticker"]))
+
+cum_fig.update_layout(
+    xaxis_title="Date (Weekly, Fri close)",
+    yaxis_title="Cumulative return (%)",
+    legend_title="Ticker", height=600
+)
+st.subheader("Cumulative return comparison")
+st.plotly_chart(cum_fig, use_container_width=True)
+
+# ---- News ----
+if show_news:
+    st.subheader(f"Latest news for current outperformers (> +{threshold_pct}%)")
+    outperf = [r for r in comp_rows if r["latest_diff_pct"] > threshold_pct]
+    if not outperf:
+        st.write("No current outperformers above threshold.")
+    else:
+        API_KEY = "YOUR_FINNHUB_API_KEY"
+        finnhub_client = finnhub.Client(api_key=API_KEY)
+        _from = (datetime.now() - timedelta(days=30)).strftime('%Y-%m-%d')
+        _to = datetime.now().strftime('%Y-%m-%d')
+        for r in outperf:
+            st.markdown(f"**{r['ticker']}**")
+            try:
+                news = finnhub_client.company_news(symbol=r['ticker'], _from=_from, to=_to)
+            except Exception as e:
+                news = []
+                st.write(f"Error fetching news for {r['ticker']}: {e}")
+            if not news:
+                st.write("No news found.")
+            else:
+                for a in news[:5]:
+                    headline = a.get("headline", "No title")
+                    url = a.get("url")
+                    date = pd.to_datetime(a.get("datetime", None), unit='s').strftime('%Y-%m-%d') if a.get("datetime") else ""
+                    if url:
+                        st.markdown(f"- [{headline}]({url}) ({date})")
+                    else:
+                        st.markdown(f"- {headline} ({date})")
+
+st.markdown("---")
+st.caption("Data source: Yahoo Finance via yfinance. Index: Nasdaq Composite (^IXIC).")
+
