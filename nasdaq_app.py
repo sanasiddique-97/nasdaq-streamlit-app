@@ -1,11 +1,12 @@
 # stock_vs_nasdaq_app.py
+import finnhub
 import streamlit as st
 import pandas as pd
 import numpy as np
 import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import finnhub  # for fetching news
+  # for fetching news
 
 
 st.set_page_config(layout="wide", page_title="Stock vs NASDAQ (^IXIC) — Weekly Comparison")

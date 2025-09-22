@@ -1,6 +1,6 @@
+finnhub-python
 streamlit
 pandas
 numpy
 yfinance
 plotly
-finnhub-python
