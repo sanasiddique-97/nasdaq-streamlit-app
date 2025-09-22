@@ -397,17 +397,22 @@ index_weekly = index_weekly.tail(weeks)
 index_weekly.index = index_weekly.index.date
 
 # ---- Mode logic ----
+# ---- Mode logic ----
 if mode == "Select tickers":
     tickers = st.sidebar.multiselect("Select tickers (market cap >5B)", nasdaq_100, default=["AAPL","MSFT","TSLA"])
     if not tickers:
         st.warning("Select at least one ticker")
         st.stop()
 else:
-    tickers = nasdaq_100
+    # Auto-show last week outperformers
+    info_all = fetch_tickers_info(nasdaq_100)
+    tickers = []
+    for t, data in info_all.items():
+        if data["marketCap"] and data["marketCap"] >= 5e9 and not data["history"].empty:
+            tickers.append(t)
+    info = {t: info_all[t] for t in tickers}  # only keep valid
+    weeks = 1  # compare last week only
 
-# ---- Fetch data ----
-with st.spinner("Fetching stock data..."):
-    info = fetch_tickers_info(tickers + [index_ticker])
 
 # ---- Filter ----
 filtered = []
