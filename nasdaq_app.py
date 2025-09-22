@@ -209,27 +209,85 @@ st.plotly_chart(fig, use_container_width=True)
 st.markdown("**Client graph options**: use the legend to toggle series on/off. Markers show ±threshold breaches.")
 
 
-# ---- Auto cumulative out/underperformers (market cap filtered + graph) ----
-st.subheader("Auto cumulative out/underperformers (market cap filtered)")
+# # ---- Auto cumulative out/underperformers (market cap filtered + graph) ----
+# st.subheader("Auto cumulative out/underperformers (market cap filtered)")
 
-# Filter by market cap range
-filtered_by_mcap = [r for r in comp_rows if r["marketCap"] >= min_mcap*1e9 and (max_mcap==0 or r["marketCap"] <= max_mcap*1e9)]
-if not filtered_by_mcap:
-    st.write("No tickers in selected market cap range for cumulative analysis.")
+# # Filter by market cap range
+# filtered_by_mcap = [r for r in comp_rows if r["marketCap"] >= min_mcap*1e9 and (max_mcap==0 or r["marketCap"] <= max_mcap*1e9)]
+# if not filtered_by_mcap:
+#     st.write("No tickers in selected market cap range for cumulative analysis.")
+# else:
+#     # Prepare cumulative table
+#     cum_table = pd.DataFrame([{
+#         "Ticker": r["ticker"],
+#         "MarketCap (USD)": r["marketCap"],
+#         "Weeks": len(r["aligned"]),
+#         "Cumulative Stock %": round(r["aligned"]["stock_cum_pct"].iloc[-1], 2),
+#         "Cumulative NASDAQ %": round(r["aligned"]["index_cum_pct"].iloc[-1], 2),
+#         "Cumulative Diff %": round(r["aligned"]["diff_cum_pct"].iloc[-1], 2),
+#         "Status": ("outperform" if r["aligned"]["diff_cum_pct"].iloc[-1] > threshold_pct 
+#                    else ("underperform" if r["aligned"]["diff_cum_pct"].iloc[-1] < -threshold_pct else "neutral"))
+#     } for r in filtered_by_mcap]).set_index("Ticker")
+
+#     def highlight_cum(row):
+#         if row["Status"] == "outperform":
+#             return ["background-color: #d4edda"]*len(row)
+#         elif row["Status"] == "underperform":
+#             return ["background-color: #f8d7da"]*len(row)
+#         else:
+#             return [""]*len(row)
+
+#     st.dataframe(cum_table.style.apply(highlight_cum, axis=1))
+
+#     # Cumulative graph
+#     st.subheader("Cumulative % vs NASDAQ for selected market cap")
+#     cum_fig2 = go.Figure()
+#     for r in filtered_by_mcap:
+#         df = r["aligned"].copy().reset_index().rename(columns={"index":"Week_End_Date"})
+#         cum_fig2.add_trace(go.Scatter(
+#             x=df["Week_End_Date"], y=df["diff_cum_pct"],
+#             mode="lines+markers",
+#             name=r["ticker"],
+#             hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Cumulative diff: %{y:.2f}%%<extra></extra>",
+#             text=[r["ticker"]]*len(df)
+#         ))
+
+#     cum_fig2.add_trace(go.Scatter(
+#         x=df["Week_End_Date"], y=df["index_cum_pct"],
+#         mode="lines", line=dict(dash="dot", color="gray"), name="NASDAQ",
+#         hovertemplate="NASDAQ<br>Date: %{x}<br>Cumulative %: %{y:.2f}%%<extra></extra>"
+#     ))
+
+#     cum_fig2.update_layout(
+#         xaxis_title="Week End Date",
+#         yaxis_title="Cumulative % Change",
+#         legend_title="Tickers",
+#         height=600
+#     )
+#     st.plotly_chart(cum_fig2, use_container_width=True)
+
+# ---- Auto threshold breach table (like news) ----
+st.subheader(f"Tickers breaching ±{threshold_pct}% threshold (auto, no selection needed)")
+
+# Filter tickers by threshold (latest week) and market cap
+auto_ticks = [r for r in comp_rows 
+              if ((r["latest_diff_pct"] > threshold_pct) or (r["latest_diff_pct"] < -threshold_pct))
+              and r["marketCap"] >= min_mcap*1e9 
+              and (max_mcap==0 or r["marketCap"] <= max_mcap*1e9)]
+
+if not auto_ticks:
+    st.write("No tickers breached threshold this week automatically.")
 else:
-    # Prepare cumulative table
-    cum_table = pd.DataFrame([{
+    # Prepare automatic table
+    auto_df = pd.DataFrame([{
         "Ticker": r["ticker"],
         "MarketCap (USD)": r["marketCap"],
-        "Weeks": len(r["aligned"]),
-        "Cumulative Stock %": round(r["aligned"]["stock_cum_pct"].iloc[-1], 2),
-        "Cumulative NASDAQ %": round(r["aligned"]["index_cum_pct"].iloc[-1], 2),
-        "Cumulative Diff %": round(r["aligned"]["diff_cum_pct"].iloc[-1], 2),
-        "Status": ("outperform" if r["aligned"]["diff_cum_pct"].iloc[-1] > threshold_pct 
-                   else ("underperform" if r["aligned"]["diff_cum_pct"].iloc[-1] < -threshold_pct else "neutral"))
-    } for r in filtered_by_mcap]).set_index("Ticker")
+        "Weeks": r["weeks_available"],
+        "Latest diff (%)": round(r["latest_diff_pct"], 2),
+        "Status": r["status"]
+    } for r in auto_ticks]).set_index("Ticker")
 
-    def highlight_cum(row):
+    def highlight_auto(row):
         if row["Status"] == "outperform":
             return ["background-color: #d4edda"]*len(row)
         elif row["Status"] == "underperform":
@@ -237,34 +295,41 @@ else:
         else:
             return [""]*len(row)
 
-    st.dataframe(cum_table.style.apply(highlight_cum, axis=1))
+    st.dataframe(auto_df.style.apply(highlight_auto, axis=1))
 
-    # Cumulative graph
-    st.subheader("Cumulative % vs NASDAQ for selected market cap")
-    cum_fig2 = go.Figure()
-    for r in filtered_by_mcap:
+    # Auto graph for threshold breaches
+    st.subheader("Weekly % difference for tickers breaching threshold")
+    auto_fig = go.Figure()
+    for r in auto_ticks:
         df = r["aligned"].copy().reset_index().rename(columns={"index":"Week_End_Date"})
-        cum_fig2.add_trace(go.Scatter(
-            x=df["Week_End_Date"], y=df["diff_cum_pct"],
+        auto_fig.add_trace(go.Scatter(
+            x=df["Week_End_Date"], y=df["diff_pct"],
             mode="lines+markers",
             name=r["ticker"],
-            hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Cumulative diff: %{y:.2f}%%<extra></extra>",
+            hovertemplate="<b>%{text}</b><br>Date: %{x}<br>% diff: %{y:.2f}%%<extra></extra>",
             text=[r["ticker"]]*len(df)
         ))
+        # Highlight points exceeding threshold
+        out_mask = df["diff_pct"] > threshold_pct
+        under_mask = df["diff_pct"] < -threshold_pct
+        auto_fig.add_trace(go.Scatter(
+            x=df.loc[out_mask, "Week_End_Date"], y=df.loc[out_mask, "diff_pct"],
+            mode="markers", marker=dict(size=10, symbol="triangle-up"),
+            name=f"{r['ticker']} > +{threshold_pct}%", text=[r["ticker"]]*out_mask.sum()
+        ))
+        auto_fig.add_trace(go.Scatter(
+            x=df.loc[under_mask, "Week_End_Date"], y=df.loc[under_mask, "diff_pct"],
+            mode="markers", marker=dict(size=10, symbol="triangle-down"),
+            name=f"{r['ticker']} < -{threshold_pct}%", text=[r["ticker"]]*under_mask.sum()
+        ))
 
-    cum_fig2.add_trace(go.Scatter(
-        x=df["Week_End_Date"], y=df["index_cum_pct"],
-        mode="lines", line=dict(dash="dot", color="gray"), name="NASDAQ",
-        hovertemplate="NASDAQ<br>Date: %{x}<br>Cumulative %: %{y:.2f}%%<extra></extra>"
-    ))
-
-    cum_fig2.update_layout(
+    auto_fig.update_layout(
         xaxis_title="Week End Date",
-        yaxis_title="Cumulative % Change",
+        yaxis_title="Stock % - NASDAQ % (weekly, % points)",
         legend_title="Tickers",
         height=600
     )
-    st.plotly_chart(cum_fig2, use_container_width=True)
+    st.plotly_chart(auto_fig, use_container_width=True)
 
 
 # ---- Cumulative % difference chart ----
