@@ -446,6 +446,98 @@ if out_table.empty:
 else:
     st.dataframe(out_table.style.apply(highlight_status, axis=1))
 
+
+
+#### new -------------------------------------------------------------------------------------------------------------------------------
+
+# ---- Auto Out/Underperform Table & Graph (independent of sidebar selection) ----
+st.subheader(f"Auto Out/Underperform Table (Threshold ±{threshold_pct}%) — All tickers")
+
+# Full tickers list for automatic check
+auto_tickers = ["AAPL", "MSFT", "TSLA", "AMZN", "NVDA", "GOOG", "META", "NFLX"]
+
+# Fetch data if not already fetched
+with st.spinner("Fetching data for auto table..."):
+    auto_info = fetch_tickers_info(auto_tickers + [index_ticker])
+
+# Filter by market cap
+auto_filtered = []
+for t in auto_tickers:
+    mcap = auto_info[t]["marketCap"]
+    if mcap is None or mcap < min_mcap * 1e9 or (max_mcap > 0 and mcap > max_mcap*1e9) or auto_info[t]["history"].empty:
+        continue
+    auto_filtered.append(t)
+
+# Prepare auto table
+auto_rows = []
+for t in auto_filtered:
+    s_weekly = weekly_close_pct(auto_info[t]["history"]).sort_index()
+    s_weekly.index = s_weekly.index.date
+    aligned = pd.DataFrame({
+        "stock_weekly_pct": s_weekly,
+        "index_weekly_pct": index_weekly
+    }).dropna().tail(weeks)
+    if aligned.empty:
+        continue
+    aligned["diff_pct"] = aligned["stock_weekly_pct"] - aligned["index_weekly_pct"]
+    aligned["stock_cum_pct"] = cumulative_return(aligned["stock_weekly_pct"])
+    aligned["index_cum_pct"] = cumulative_return(aligned["index_weekly_pct"])
+    aligned["diff_cum_pct"] = aligned["stock_cum_pct"] - aligned["index_cum_pct"]
+    latest_diff = aligned["diff_pct"].iloc[-1]
+    status = "neutral"
+    if latest_diff > threshold_pct:
+        status = "outperform"
+    elif latest_diff < -threshold_pct:
+        status = "underperform"
+    auto_rows.append({
+        "ticker": t,
+        "marketCap": auto_info[t]["marketCap"],
+        "latest_diff_pct": latest_diff,
+        "status": status,
+        "aligned": aligned
+    })
+
+# Build auto summary table
+auto_summary_df = pd.DataFrame([{
+    "Ticker": r["ticker"],
+    "MarketCap (USD)": r["marketCap"],
+    "Latest diff (%)": round(r["latest_diff_pct"], 3),
+    "Status": r["status"]
+} for r in auto_rows]).set_index("Ticker")
+
+def highlight_auto_status(row):
+    if row["Status"] == "outperform":
+        return ["background-color: #d4edda"]*len(row)
+    elif row["Status"] == "underperform":
+        return ["background-color: #f8d7da"]*len(row)
+    else:
+        return [""]*len(row)
+
+st.dataframe(auto_summary_df.style.apply(highlight_auto_status, axis=1))
+
+# ---- Auto Graph ----
+st.subheader("Auto Out/Underperform Graph — All tickers")
+auto_fig = go.Figure()
+for r in auto_rows:
+    df = r["aligned"].reset_index().rename(columns={"index":"date"})
+    auto_fig.add_trace(go.Scatter(
+        x=df["date"],
+        y=df["diff_pct"],
+        mode="lines+markers",
+        name=r["ticker"],
+        hovertemplate="<b>%{text}</b><br>Date: %{x}<br>% diff: %{y:.2f}%%<extra></extra>",
+        text=[r["ticker"]]*len(df)
+    ))
+
+auto_fig.update_layout(
+    xaxis_title="Date (Weekly, Fri close)",
+    yaxis_title="Stock % - NASDAQ % (weekly, % points)",
+    legend_title="Tickers",
+    hovermode="closest", height=500
+)
+st.plotly_chart(auto_fig, use_container_width=True)
+
+#### new -------------------------------------------------------------------------------------------------------------------------------
 # ---- Latest news for current outperformers ----
 if show_news:
     st.subheader(f"Latest news for current outperformers (> +{threshold_pct}%)")
