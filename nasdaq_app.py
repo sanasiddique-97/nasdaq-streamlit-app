@@ -86,10 +86,42 @@ for t in tickers:
         continue
     filtered.append(t)
 
+
+#------------------------------------------------------------- ye change krlena for control option -------------------------------------------------------
+
+# if len(filtered) == 0:
+#     st.error("No tickers passed the market-cap filter or had usable price data. See reasons below.")
+#     st.write(pd.DataFrame.from_dict(filtered_reasons, orient="index", columns=["reason"]))
+#     st.stop()
+
+
 if len(filtered) == 0:
-    st.error("No tickers passed the market-cap filter or had usable price data. See reasons below.")
+    st.warning("No selected tickers passed the market-cap filter or had usable price data. See reasons below.")
     st.write(pd.DataFrame.from_dict(filtered_reasons, orient="index", columns=["reason"]))
-    st.stop()
+else:
+    # ---- Weekly % changes ----
+    def weekly_close_pct(df):
+        if df.empty:
+            return pd.Series(dtype=float)
+        w = df["Close"].resample("W-FRI").last().dropna()
+        pct = w.pct_change().dropna() * 100.0
+        pct.name = "weekly_pct"
+        return pct
+
+    def cumulative_return(pct_series):
+        factor = (1 + pct_series/100).cumprod()
+        return (factor - 1) * 100
+
+    # Index weekly
+    index_weekly = weekly_close_pct(info[index_ticker]["history"])
+    if index_weekly.empty:
+        st.error(f"Could not fetch weekly data for index {index_ticker}.")
+    else:
+        index_weekly = index_weekly.sort_index().tail(weeks)
+        index_weekly.index = index_weekly.index.date
+
+        # continue with your comp_rows, charts, tables...
+##############################################################yaha tak change #################################################
 
 # ---- Weekly % changes ----
 def weekly_close_pct(df):
