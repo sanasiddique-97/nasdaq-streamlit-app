@@ -236,6 +236,83 @@ for r in comp_rows:
     df = df.round(3)
     st.dataframe(df, height=250)
 
+
+# --- Cumulative calculation (compounded) ---
+for r in comp_rows:
+    df = r["aligned"].copy()
+    df["stock_cum_pct"] = (1 + df["stock_weekly_pct"]/100).cumprod() - 1
+    df["stock_cum_pct"] *= 100
+    df["index_cum_pct"] = (1 + df["index_weekly_pct"]/100).cumprod() - 1
+    df["index_cum_pct"] *= 100
+    df["diff_cum_pct"] = df["stock_cum_pct"] - df["index_cum_pct"]
+    r["aligned"] = df
+
+# --- Cumulative chart ---
+st.subheader("Cumulative Performance vs NASDAQ (^IXIC)")
+
+import plotly.graph_objects as go
+cum_fig = go.Figure()
+date_axis = None
+
+for r in comp_rows:
+    df = r["aligned"].copy().reset_index().rename(columns={"index": "Week_End_Date"})
+    date_axis = df["Week_End_Date"] if date_axis is None else date_axis
+
+    # Stock cumulative line
+    cum_fig.add_trace(go.Scatter(
+        x=df["Week_End_Date"],
+        y=df["stock_cum_pct"],
+        mode="lines+markers",
+        name=f"{r['ticker']} Cumulative",
+        hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Cumulative %: %{y:.2f}%%<extra></extra>",
+        text=[r["ticker"]]*len(df)
+    ))
+
+    # NASDAQ cumulative line
+    cum_fig.add_trace(go.Scatter(
+        x=df["Week_End_Date"],
+        y=df["index_cum_pct"],
+        mode="lines",
+        line=dict(dash="dot", color="gray"),
+        name="NASDAQ Cumulative",
+        hovertemplate="NASDAQ<br>Date: %{x}<br>Cumulative %: %{y:.2f}%%<extra></extra>"
+    ))
+
+cum_fig.update_layout(
+    xaxis_title="Week End Date",
+    yaxis_title="Cumulative % Change",
+    legend_title="Series",
+    height=600,
+    hovermode="closest"
+)
+st.plotly_chart(cum_fig, use_container_width=True)
+
+# --- Cumulative summary table ---
+st.subheader("Cumulative difference summary")
+cum_summary_df = pd.DataFrame([{
+    "Ticker": r["ticker"],
+    "MarketCap (USD)": r["marketCap"],
+    "Weeks": len(r["aligned"]),
+    "Cumulative Stock %": round(r["aligned"]["stock_cum_pct"].iloc[-1], 2),
+    "Cumulative NASDAQ %": round(r["aligned"]["index_cum_pct"].iloc[-1], 2),
+    "Cumulative Diff %": round(r["aligned"]["diff_cum_pct"].iloc[-1], 2),
+    "Cumulative Status": (
+        "outperform" if r["aligned"]["diff_cum_pct"].iloc[-1] > threshold_pct
+        else ("underperform" if r["aligned"]["diff_cum_pct"].iloc[-1] < -threshold_pct else "neutral")
+    )
+} for r in comp_rows]).set_index("Ticker")
+
+def highlight_cum_status(row):
+    if row["Cumulative Status"] == "outperform":
+        return ["background-color: #d4edda"]*len(row)
+    elif row["Cumulative Status"] == "underperform":
+        return ["background-color: #f8d7da"]*len(row)
+    else:
+        return [""]*len(row)
+
+st.dataframe(cum_summary_df.style.apply(highlight_cum_status, axis=1))
+
+
 # ---- Out/Underperformers Table ----
 st.subheader(f"Tickers vs NASDAQ ±{threshold_pct}% (latest week)")
 out_table = summary_df[(summary_df["Latest diff (%)"] > threshold_pct) | 
@@ -248,7 +325,9 @@ else:
 # ---- Latest news for current outperformers ----
 if show_news:
     st.subheader(f"Latest news for current outperformers (> +{threshold_pct}%)")
-    outperf = [r for r in comp_rows if r["latest_diff_pct"] > threshold_pct]
+    #outperf = [r for r in comp_rows if r["latest_diff_pct"] > threshold_pct]
+    outperf = [r for r in comp_rows if r["aligned"]["diff_cum_pct"].iloc[-1] > threshold_pct]
+
     if not outperf:
         st.write("No current outperformers above threshold.")
     else:
