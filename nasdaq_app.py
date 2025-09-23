@@ -1,589 +1,395 @@
-# stock_vs_nasdaq_app.py
+import finnhub
 import streamlit as st
 import pandas as pd
-import numpy as np
 import yfinance as yf
 import plotly.graph_objects as go
 from datetime import datetime, timedelta
-import finnhub
 
+
+# Must be first Streamlit command
 st.set_page_config(layout="wide", page_title="Stock vs NASDAQ (^IXIC) — Weekly Comparison")
 
-# ---- Sidebar controls ----
-st.sidebar.header("Controls")
-
-# Ticker selection dropdown (default options)
-available_tickers = ["AAPL", "MSFT", "TSLA", "AMZN", "NVDA", "GOOG", "META", "NFLX"]
-tickers = st.sidebar.multiselect("Select tickers", available_tickers, default=["AAPL", "MSFT", "TSLA"])
-
-# Market cap range
-st.sidebar.subheader("Market Cap Filter (USD Billions)")
-min_mcap = st.sidebar.number_input("Min market cap", value=5.0, min_value=0.0, step=0.5)
-max_mcap = st.sidebar.number_input("Max market cap (0 = no limit)", value=0.0, min_value=0.0, step=0.5)
-
-# Weeks and thresholds
-weeks = st.sidebar.slider("Number of weeks to compare (weekly granularity)", min_value=1, max_value=52, value=12)
-show_news = st.sidebar.checkbox("Fetch latest news for overperformers", value=True)
-compare_range = st.sidebar.selectbox("Quick range", options=["Past week", "Past 3 months", "Custom weeks"], index=2)
-if compare_range == "Past week":
-    weeks = 1
-elif compare_range == "Past 3 months":
-    weeks = 12
-
-st.sidebar.markdown("---")
-st.sidebar.markdown("Defaults: market cap = 5B, out/underperform threshold = ±5%")
-threshold_pct = st.sidebar.number_input("Out/Underperform threshold (%)", value=5.0, min_value=0.1, step=0.1)
-
-# ---- Main ----
-st.title("Compare selected stocks vs NASDAQ Composite (^IXIC) — Weekly basis")
-st.markdown("Weekly percent changes; difference = stock_weekly% - index_weekly%.")
-
-# ---- Data fetching ----
-index_ticker = "^IXIC"
-end_date = datetime.utcnow().date()
-start_date = end_date - timedelta(weeks=weeks + 4)  # fetch extra weeks for alignment
-
-@st.cache_data(show_spinner=False)
-def fetch_tickers_info(tlist):
-    info = {}
-    for t in tlist:
-        tk = yf.Ticker(t)
-        try:
-            data = tk.history(period="5y", auto_adjust=False)
-        except Exception:
-            data = pd.DataFrame()
-        try:
-            mc = tk.info.get("marketCap", None)
-        except Exception:
-            mc = None
-        info[t] = {
-            "history": data,
-            "marketCap": mc
-        }
-    return info
-
-# Fetch data
-all_symbols = tickers + [index_ticker]
-with st.spinner("Fetching data..."):
-    info = fetch_tickers_info(all_symbols)
-
-# Filter tickers by market cap and data availability
-filtered = []
-filtered_reasons = {}
-for t in tickers:
-    mcap = info[t]["marketCap"]
-    if mcap is None:
-        filtered_reasons[t] = "market cap unknown"
-        continue
-    if mcap < min_mcap * 1e9:
-        filtered_reasons[t] = f"market cap {mcap:.0f} < {min_mcap*1e9:.0f}"
-        continue
-    if max_mcap > 0 and mcap > max_mcap * 1e9:
-        filtered_reasons[t] = f"market cap {mcap:.0f} > {max_mcap*1e9:.0f}"
-        continue
-    if info[t]["history"].empty:
-        filtered_reasons[t] = "no price history"
-        continue
-    filtered.append(t)
-
-
-#------------------------------------------------------------- ye change krlena for control option -------------------------------------------------------
-
-if len(filtered) == 0:
-    st.error("No tickers passed the market-cap filter or had usable price data. See reasons below.")
-    st.write(pd.DataFrame.from_dict(filtered_reasons, orient="index", columns=["reason"]))
-    st.stop()
+# Now you can create tabs
+tab1, tab2 = st.tabs(["Weekly Comparison", "Overall Market Summary"])
 
 
 
 
-##############################################################yaha tak change #################################################
+######################
+# --- TAB 1: Weekly Comparison ---
+######################
+with tab1:
 
-# ---- Weekly % changes ----
-def weekly_close_pct(df):
-    if df.empty:
-        return pd.Series(dtype=float)
-    w = df["Close"].resample("W-FRI").last().dropna()
-    pct = w.pct_change().dropna() * 100.0
-    pct.name = "weekly_pct"
-    return pct
-
-def cumulative_return(pct_series):
-    factor = (1 + pct_series/100).cumprod()
-    return (factor - 1) * 100
-
-
-
-
-# Index weekly 
-index_weekly = weekly_close_pct(info[index_ticker]["history"])
-if index_weekly.empty:
-    st.error(f"Could not fetch weekly data for index {index_ticker}.")
-    st.stop()
-index_weekly = index_weekly.sort_index().tail(weeks)
-index_weekly.index = index_weekly.index.date
-
-# Compare tickers
-comp_rows = []
-for t in filtered:
-    s_weekly = weekly_close_pct(info[t]["history"]).sort_index()
-    s_weekly.index = s_weekly.index.date
-    aligned = pd.DataFrame({
-        "stock_weekly_pct": s_weekly,
-        "index_weekly_pct": index_weekly
-    }).dropna().tail(weeks)
-    if aligned.empty:
-        continue
-    aligned["diff_pct"] = aligned["stock_weekly_pct"] - aligned["index_weekly_pct"]
-    aligned["stock_cum_pct"] = cumulative_return(aligned["stock_weekly_pct"])
-    aligned["index_cum_pct"] = cumulative_return(aligned["index_weekly_pct"])
-    aligned["diff_cum_pct"] = aligned["stock_cum_pct"] - aligned["index_cum_pct"]
     
-    avg_diff = aligned["diff_pct"].mean()
-    latest_diff = aligned["diff_pct"].iloc[-1]
-    status = "neutral"
-    if latest_diff > threshold_pct:
-        status = "outperform"
-    elif latest_diff < -threshold_pct:
-        status = "underperform"
-    comp_rows.append({
-        "ticker": t,
-        "marketCap": info[t]["marketCap"],
-        "weeks_available": len(aligned),
-        "avg_diff_pct": avg_diff,
-        "latest_diff_pct": latest_diff,
-        "status": status,
-        "aligned": aligned
-    })
 
-if len(comp_rows) == 0:
-    st.write("No aligned weekly data for selected tickers and index in the requested range.")
-    st.stop()
-
-# ---- Summary Table ----
-summary_df = pd.DataFrame([{
-    "Ticker": r["ticker"],
-    "MarketCap (USD)": r["marketCap"],
-    "Weeks": r["weeks_available"],
-    "Avg diff (%)": round(r["avg_diff_pct"], 3),
-    "Latest diff (%)": round(r["latest_diff_pct"], 3),
-    "Status": r["status"]
-} for r in comp_rows]).set_index("Ticker")
-
-def highlight_status(row):
-    if row["Status"] == "outperform":
-        return ["background-color: #d4edda"]*len(row)
-    elif row["Status"] == "underperform":
-        return ["background-color: #f8d7da"]*len(row)
-    else:
-        return [""]*len(row)
-
-st.subheader("Weekly comparison summary")
-st.dataframe(summary_df.style.apply(highlight_status, axis=1))
-
-# ---- Weekly % difference chart ----
-st.subheader("Interactive weekly % difference chart")
-fig = go.Figure()
-date_axis = None
-for r in comp_rows:
-    df = r["aligned"].reset_index().rename(columns={"index":"date"})
-    date_axis = df["date"] if date_axis is None else date_axis
-    fig.add_trace(go.Scatter(
-        x=df["date"], y=df["diff_pct"],
-        mode="lines+markers",
-        name=r["ticker"],
-        hovertemplate="<b>%{text}</b><br>Date: %{x}<br>% diff: %{y:.2f}%%<extra></extra>",
-        text=[r["ticker"]]*len(df)
-    ))
-    out_mask = df["diff_pct"] > threshold_pct
-    under_mask = df["diff_pct"] < -threshold_pct
-    fig.add_trace(go.Scatter(
-        x=df.loc[out_mask, "date"], y=df.loc[out_mask, "diff_pct"],
-        mode="markers", marker=dict(size=10, symbol="triangle-up"),
-        name=f"{r['ticker']} > +{threshold_pct}%", text=[r["ticker"]]*out_mask.sum(),
-        hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Outperform %{y:.2f}%%<extra></extra>"
-    ))
-    fig.add_trace(go.Scatter(
-        x=df.loc[under_mask, "date"], y=df.loc[under_mask, "diff_pct"],
-        mode="markers", marker=dict(size=10, symbol="triangle-down"),
-        name=f"{r['ticker']} < -{threshold_pct}%", text=[r["ticker"]]*under_mask.sum(),
-        hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Underperform %{y:.2f}%%<extra></extra>"
-    ))
-
-fig.update_layout(
-    xaxis_title="Date (Weekly, Fri close)",
-    yaxis_title="Stock % - NASDAQ % (weekly, % points)",
-    legend_title="Series",
-    hovermode="closest", height=600
-)
-st.plotly_chart(fig, use_container_width=True)
-st.markdown("**Client graph options**: use the legend to toggle series on/off. Markers show ±threshold breaches.")
-
-
-# # ---- Auto cumulative out/underperformers (market cap filtered + graph) ----
-# st.subheader("Auto cumulative out/underperformers (market cap filtered)")
-
-# # Filter by market cap range
-# filtered_by_mcap = [r for r in comp_rows if r["marketCap"] >= min_mcap*1e9 and (max_mcap==0 or r["marketCap"] <= max_mcap*1e9)]
-# if not filtered_by_mcap:
-#     st.write("No tickers in selected market cap range for cumulative analysis.")
-# else:
-#     # Prepare cumulative table
-#     cum_table = pd.DataFrame([{
-#         "Ticker": r["ticker"],
-#         "MarketCap (USD)": r["marketCap"],
-#         "Weeks": len(r["aligned"]),
-#         "Cumulative Stock %": round(r["aligned"]["stock_cum_pct"].iloc[-1], 2),
-#         "Cumulative NASDAQ %": round(r["aligned"]["index_cum_pct"].iloc[-1], 2),
-#         "Cumulative Diff %": round(r["aligned"]["diff_cum_pct"].iloc[-1], 2),
-#         "Status": ("outperform" if r["aligned"]["diff_cum_pct"].iloc[-1] > threshold_pct 
-#                    else ("underperform" if r["aligned"]["diff_cum_pct"].iloc[-1] < -threshold_pct else "neutral"))
-#     } for r in filtered_by_mcap]).set_index("Ticker")
-
-#     def highlight_cum(row):
-#         if row["Status"] == "outperform":
-#             return ["background-color: #d4edda"]*len(row)
-#         elif row["Status"] == "underperform":
-#             return ["background-color: #f8d7da"]*len(row)
-#         else:
-#             return [""]*len(row)
-
-#     st.dataframe(cum_table.style.apply(highlight_cum, axis=1))
-
-#     # Cumulative graph
-#     st.subheader("Cumulative % vs NASDAQ for selected market cap")
-#     cum_fig2 = go.Figure()
-#     for r in filtered_by_mcap:
-#         df = r["aligned"].copy().reset_index().rename(columns={"index":"Week_End_Date"})
-#         cum_fig2.add_trace(go.Scatter(
-#             x=df["Week_End_Date"], y=df["diff_cum_pct"],
-#             mode="lines+markers",
-#             name=r["ticker"],
-#             hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Cumulative diff: %{y:.2f}%%<extra></extra>",
-#             text=[r["ticker"]]*len(df)
-#         ))
-
-#     cum_fig2.add_trace(go.Scatter(
-#         x=df["Week_End_Date"], y=df["index_cum_pct"],
-#         mode="lines", line=dict(dash="dot", color="gray"), name="NASDAQ",
-#         hovertemplate="NASDAQ<br>Date: %{x}<br>Cumulative %: %{y:.2f}%%<extra></extra>"
-#     ))
-
-#     cum_fig2.update_layout(
-#         xaxis_title="Week End Date",
-#         yaxis_title="Cumulative % Change",
-#         legend_title="Tickers",
-#         height=600
-#     )
-#     st.plotly_chart(cum_fig2, use_container_width=True)
-
-# ---- Auto threshold breach table (like news) ----
-st.subheader(f"Tickers breaching ±{threshold_pct}% threshold (auto, no selection needed)")
-
-# Filter tickers by threshold (latest week) and market cap
-auto_ticks = [r for r in comp_rows 
-              if ((r["latest_diff_pct"] > threshold_pct) or (r["latest_diff_pct"] < -threshold_pct))
-              and r["marketCap"] >= min_mcap*1e9 
-              and (max_mcap==0 or r["marketCap"] <= max_mcap*1e9)]
-
-if not auto_ticks:
-    st.write("No tickers breached threshold this week automatically.")
-else:
-    # Prepare automatic table
-    auto_df = pd.DataFrame([{
+    # ---- Sidebar controls ----
+    st.sidebar.header("Controls")
+    
+    # --- Fetch tickers from Google Sheet ---
+    sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
+    try:
+        sheet_df = pd.read_csv(sheet_url)
+        available_tickers = sheet_df.iloc[:, 0].dropna().tolist()
+    except Exception as e:
+        st.warning(f"Could not load tickers from Google Sheet: {e}")
+        available_tickers = ["AAPL", "MSFT", "TSLA", "AMZN", "NVDA", "GOOG", "META", "NFLX"]
+    
+    tickers = st.sidebar.multiselect("Select tickers", available_tickers, default=available_tickers[:3])
+    
+    # Market cap range
+    st.sidebar.subheader("Market Cap Filter (USD Billions)")
+    min_mcap = st.sidebar.number_input("Min market cap", value=5.0, min_value=0.0, step=0.5)
+    max_mcap = st.sidebar.number_input("Max market cap (0 = no limit)", value=0.0, min_value=0.0, step=0.5)
+    
+    # Weeks and thresholds
+    weeks = st.sidebar.slider("Number of weeks to compare (weekly granularity)", min_value=1, max_value=52, value=12)
+    show_news = st.sidebar.checkbox("Fetch latest news for overperformers", value=True)
+    compare_range = st.sidebar.selectbox("Quick range", options=["Past week", "Past 3 months", "Custom weeks"], index=2)
+    if compare_range == "Past week":
+        weeks = 1
+    elif compare_range == "Past 3 months":
+        weeks = 12
+    
+    st.sidebar.markdown("---")
+    st.sidebar.markdown("Defaults: market cap = 5B, out/underperform threshold = ±5%")
+    threshold_pct = st.sidebar.number_input("Out/Underperform threshold (%)", value=5.0, min_value=0.1, step=0.1)
+    
+    # ---- Main ----
+    st.title("Compare selected stocks vs NASDAQ Composite (^IXIC) — Weekly basis")
+    st.markdown("Weekly percent changes; difference = stock_weekly% - index_weekly%.")
+    
+    # ---- Data fetching ----
+    index_ticker = "^IXIC"
+    end_date = datetime.utcnow().date()
+    start_date = end_date - timedelta(weeks=weeks + 4)  # fetch extra weeks for alignment
+    
+    @st.cache_data(show_spinner=False)
+    def fetch_tickers_info(tlist):
+        info = {}
+        for t in tlist:
+            tk = yf.Ticker(t)
+            try:
+                data = tk.history(period="5y", auto_adjust=False)
+            except Exception:
+                data = pd.DataFrame()
+            try:
+                mc = tk.info.get("marketCap", None)
+            except Exception:
+                mc = None
+            info[t] = {
+                "history": data,
+                "marketCap": mc
+            }
+        return info
+    
+    # Fetch data
+    all_symbols = tickers + [index_ticker]
+    with st.spinner("Fetching data..."):
+        info = fetch_tickers_info(all_symbols)
+    
+    # Filter tickers by market cap and data availability
+    filtered = []
+    filtered_reasons = {}
+    for t in tickers:
+        mcap = info[t]["marketCap"]
+        if mcap is None:
+            filtered_reasons[t] = "market cap unknown"
+            continue
+        if mcap < min_mcap * 1e9:
+            filtered_reasons[t] = f"market cap {mcap:.0f} < {min_mcap*1e9:.0f}"
+            continue
+        if max_mcap > 0 and mcap > max_mcap * 1e9:
+            filtered_reasons[t] = f"market cap {mcap:.0f} > {max_mcap*1e9:.0f}"
+            continue
+        if info[t]["history"].empty:
+            filtered_reasons[t] = "no price history"
+            continue
+        filtered.append(t)
+    
+    if len(filtered) == 0:
+        st.error("No tickers passed the market-cap filter or had usable price data. See reasons below.")
+        st.write(pd.DataFrame.from_dict(filtered_reasons, orient="index", columns=["reason"]))
+        st.stop()
+    
+    # ---- Weekly % changes ----
+    def weekly_close_pct(df):
+        if df.empty:
+            return pd.Series(dtype=float)
+        w = df["Close"].resample("W-FRI").last().dropna()
+        pct = w.pct_change().dropna() * 100.0
+        pct.name = "weekly_pct"
+        return pct
+    
+    def cumulative_return(pct_series):
+        factor = (1 + pct_series/100).cumprod()
+        return (factor - 1) * 100
+    
+    # Index weekly
+    index_weekly = weekly_close_pct(info[index_ticker]["history"])
+    if index_weekly.empty:
+        st.error(f"Could not fetch weekly data for index {index_ticker}.")
+        st.stop()
+    index_weekly = index_weekly.sort_index().tail(weeks)
+    index_weekly.index = index_weekly.index.date
+    
+    # Compare tickers
+    comp_rows = []
+    for t in filtered:
+        s_weekly = weekly_close_pct(info[t]["history"]).sort_index()
+        s_weekly.index = s_weekly.index.date
+        aligned = pd.DataFrame({
+            "stock_weekly_pct": s_weekly,
+            "index_weekly_pct": index_weekly
+        }).dropna().tail(weeks)
+        if aligned.empty:
+            continue
+        aligned["diff_pct"] = aligned["stock_weekly_pct"] - aligned["index_weekly_pct"]
+        aligned["stock_cum_pct"] = cumulative_return(aligned["stock_weekly_pct"])
+        aligned["index_cum_pct"] = cumulative_return(aligned["index_weekly_pct"])
+        aligned["diff_cum_pct"] = aligned["stock_cum_pct"] - aligned["index_cum_pct"]
+        
+        avg_diff = aligned["diff_pct"].mean()
+        latest_diff = aligned["diff_pct"].iloc[-1]
+        status = "neutral"
+        if latest_diff > threshold_pct:
+            status = "outperform"
+        elif latest_diff < -threshold_pct:
+            status = "underperform"
+        comp_rows.append({
+            "ticker": t,
+            "marketCap": info[t]["marketCap"],
+            "weeks_available": len(aligned),
+            "avg_diff_pct": avg_diff,
+            "latest_diff_pct": latest_diff,
+            "status": status,
+            "aligned": aligned
+        })
+    
+    if len(comp_rows) == 0:
+        st.write("No aligned weekly data for selected tickers and index in the requested range.")
+        st.stop()
+    
+    # ---- Summary Table ----
+    summary_df = pd.DataFrame([{
         "Ticker": r["ticker"],
         "MarketCap (USD)": r["marketCap"],
         "Weeks": r["weeks_available"],
-        "Latest diff (%)": round(r["latest_diff_pct"], 2),
+        "Avg diff (%)": round(r["avg_diff_pct"], 3),
+        "Latest diff (%)": round(r["latest_diff_pct"], 3),
         "Status": r["status"]
-    } for r in auto_ticks]).set_index("Ticker")
-
-    def highlight_auto(row):
+    } for r in comp_rows]).set_index("Ticker")
+    
+    def highlight_status(row):
         if row["Status"] == "outperform":
             return ["background-color: #d4edda"]*len(row)
         elif row["Status"] == "underperform":
             return ["background-color: #f8d7da"]*len(row)
         else:
             return [""]*len(row)
-
-    st.dataframe(auto_df.style.apply(highlight_auto, axis=1))
-
-    # Auto graph for threshold breaches
-    st.subheader("Weekly % difference for tickers breaching threshold")
-    auto_fig = go.Figure()
-    for r in auto_ticks:
-        df = r["aligned"].copy().reset_index().rename(columns={"index":"Week_End_Date"})
-        auto_fig.add_trace(go.Scatter(
-            x=df["Week_End_Date"], y=df["diff_pct"],
+    
+    st.subheader("Weekly comparison summary")
+    st.dataframe(summary_df.style.apply(highlight_status, axis=1))
+    
+    # ---- Weekly % difference chart ----
+    st.subheader("Interactive weekly % difference chart")
+    fig = go.Figure()
+    date_axis = None
+    for r in comp_rows:
+        df = r["aligned"].reset_index().rename(columns={"index":"date"})
+        date_axis = df["date"] if date_axis is None else date_axis
+        fig.add_trace(go.Scatter(
+            x=df["date"], y=df["diff_pct"],
             mode="lines+markers",
             name=r["ticker"],
             hovertemplate="<b>%{text}</b><br>Date: %{x}<br>% diff: %{y:.2f}%%<extra></extra>",
             text=[r["ticker"]]*len(df)
         ))
-        # Highlight points exceeding threshold
         out_mask = df["diff_pct"] > threshold_pct
         under_mask = df["diff_pct"] < -threshold_pct
-        auto_fig.add_trace(go.Scatter(
-            x=df.loc[out_mask, "Week_End_Date"], y=df.loc[out_mask, "diff_pct"],
+        fig.add_trace(go.Scatter(
+            x=df.loc[out_mask, "date"], y=df.loc[out_mask, "diff_pct"],
             mode="markers", marker=dict(size=10, symbol="triangle-up"),
-            name=f"{r['ticker']} > +{threshold_pct}%", text=[r["ticker"]]*out_mask.sum()
+            name=f"{r['ticker']} > +{threshold_pct}%", text=[r["ticker"]]*out_mask.sum(),
+            hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Outperform %{y:.2f}%%<extra></extra>"
         ))
-        auto_fig.add_trace(go.Scatter(
-            x=df.loc[under_mask, "Week_End_Date"], y=df.loc[under_mask, "diff_pct"],
+        fig.add_trace(go.Scatter(
+            x=df.loc[under_mask, "date"], y=df.loc[under_mask, "diff_pct"],
             mode="markers", marker=dict(size=10, symbol="triangle-down"),
-            name=f"{r['ticker']} < -{threshold_pct}%", text=[r["ticker"]]*under_mask.sum()
+            name=f"{r['ticker']} < -{threshold_pct}%", text=[r["ticker"]]*under_mask.sum(),
+            hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Underperform %{y:.2f}%%<extra></extra>"
         ))
-
-    auto_fig.update_layout(
-        xaxis_title="Week End Date",
+    
+    fig.update_layout(
+        xaxis_title="Date (Weekly, Fri close)",
         yaxis_title="Stock % - NASDAQ % (weekly, % points)",
+        legend_title="Series",
+        hovermode="closest", height=600
+    )
+    st.plotly_chart(fig, use_container_width=True)
+    st.markdown("**Client graph options**: use the legend to toggle series on/off. Markers show ±threshold breaches.")
+    
+    # ---- Cumulative % difference chart ----
+    st.subheader("Cumulative % Change vs NASDAQ")
+    fig_cum = go.Figure()
+    for r in comp_rows:
+        df = r["aligned"].reset_index().rename(columns={"index":"date"})
+        fig_cum.add_trace(go.Scatter(
+            x=df["date"], y=df["diff_cum_pct"],
+            mode="lines+markers",
+            name=r["ticker"],
+            hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Cumulative diff: %{y:.2f}%%<extra></extra>",
+            text=[r["ticker"]]*len(df)
+        ))
+    fig_cum.update_layout(
+        xaxis_title="Date (Weekly, Fri close)",
+        yaxis_title="Cumulative Stock % - NASDAQ %",
         legend_title="Tickers",
         height=600
     )
-    st.plotly_chart(auto_fig, use_container_width=True)
-
-
-# ---- Cumulative % difference chart ----
-st.subheader("Cumulative % Change vs NASDAQ")
-fig_cum = go.Figure()
-for r in comp_rows:
-    df = r["aligned"].reset_index().rename(columns={"index":"date"})
-    fig_cum.add_trace(go.Scatter(
-        x=df["date"], y=df["diff_cum_pct"],
-        mode="lines+markers",
-        name=r["ticker"],
-        hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Cumulative diff: %{y:.2f}%%<extra></extra>",
-        text=[r["ticker"]]*len(df)
-    ))
-fig_cum.update_layout(
-    xaxis_title="Date (Weekly, Fri close)",
-    yaxis_title="Cumulative Stock % - NASDAQ %",
-    legend_title="Tickers",
-    height=600
-)
-st.plotly_chart(fig_cum, use_container_width=True)
-
-# ---- Per-ticker weekly details ----
-st.subheader("Per-ticker weekly details")
-for r in comp_rows:
-    st.markdown(f"**{r['ticker']}** — status: **{r['status']}**, market cap: {r['marketCap']:,}")
-    df = r["aligned"].copy().reset_index().rename(columns={"index":"Week_End_Date"})
-    df = df.round(3)
-    st.dataframe(df, height=250)
-
-
-# --- Cumulative calculation (compounded) ---
-for r in comp_rows:
-    df = r["aligned"].copy()
-    df["stock_cum_pct"] = (1 + df["stock_weekly_pct"]/100).cumprod() - 1
-    df["stock_cum_pct"] *= 100
-    df["index_cum_pct"] = (1 + df["index_weekly_pct"]/100).cumprod() - 1
-    df["index_cum_pct"] *= 100
-    df["diff_cum_pct"] = df["stock_cum_pct"] - df["index_cum_pct"]
-    r["aligned"] = df
-
-# --- Cumulative chart ---
-st.subheader("Cumulative Performance vs NASDAQ (^IXIC)")
-
-import plotly.graph_objects as go
-cum_fig = go.Figure()
-date_axis = None
-
-for r in comp_rows:
-    df = r["aligned"].copy().reset_index().rename(columns={"index": "Week_End_Date"})
-    date_axis = df["Week_End_Date"] if date_axis is None else date_axis
-
-    # Stock cumulative line
-    cum_fig.add_trace(go.Scatter(
-        x=df["Week_End_Date"],
-        y=df["stock_cum_pct"],
-        mode="lines+markers",
-        name=f"{r['ticker']} Cumulative",
-        hovertemplate="<b>%{text}</b><br>Date: %{x}<br>Cumulative %: %{y:.2f}%%<extra></extra>",
-        text=[r["ticker"]]*len(df)
-    ))
-
-    # NASDAQ cumulative line
-    cum_fig.add_trace(go.Scatter(
-        x=df["Week_End_Date"],
-        y=df["index_cum_pct"],
-        mode="lines",
-        line=dict(dash="dot", color="gray"),
-        name="NASDAQ Cumulative",
-        hovertemplate="NASDAQ<br>Date: %{x}<br>Cumulative %: %{y:.2f}%%<extra></extra>"
-    ))
-
-cum_fig.update_layout(
-    xaxis_title="Week End Date",
-    yaxis_title="Cumulative % Change",
-    legend_title="Series",
-    height=600,
-    hovermode="closest"
-)
-st.plotly_chart(cum_fig, use_container_width=True)
-
-# --- Cumulative summary table ---
-st.subheader("Cumulative difference summary")
-cum_summary_df = pd.DataFrame([{
-    "Ticker": r["ticker"],
-    "MarketCap (USD)": r["marketCap"],
-    "Weeks": len(r["aligned"]),
-    "Cumulative Stock %": round(r["aligned"]["stock_cum_pct"].iloc[-1], 2),
-    "Cumulative NASDAQ %": round(r["aligned"]["index_cum_pct"].iloc[-1], 2),
-    "Cumulative Diff %": round(r["aligned"]["diff_cum_pct"].iloc[-1], 2),
-    "Cumulative Status": (
-        "outperform" if r["aligned"]["diff_cum_pct"].iloc[-1] > threshold_pct
-        else ("underperform" if r["aligned"]["diff_cum_pct"].iloc[-1] < -threshold_pct else "neutral")
-    )
-} for r in comp_rows]).set_index("Ticker")
-
-def highlight_cum_status(row):
-    if row["Cumulative Status"] == "outperform":
-        return ["background-color: #d4edda"]*len(row)
-    elif row["Cumulative Status"] == "underperform":
-        return ["background-color: #f8d7da"]*len(row)
+    st.plotly_chart(fig_cum, use_container_width=True)
+    
+    # ---- Per-ticker weekly details ----
+    st.subheader("Per-ticker weekly details")
+    for r in comp_rows:
+        st.markdown(f"**{r['ticker']}** — status: **{r['status']}**, market cap: {r['marketCap']:,}")
+        df = r["aligned"].copy().reset_index().rename(columns={"index":"Week_End_Date"})
+        df = df.round(3)
+        st.dataframe(df, height=250)
+    
+    # ---- Out/Underperformers Table ----
+    st.subheader(f"Tickers vs NASDAQ ±{threshold_pct}% (latest week)")
+    out_table = summary_df[(summary_df["Latest diff (%)"] > threshold_pct) | 
+                           (summary_df["Latest diff (%)"] < -threshold_pct)]
+    if out_table.empty:
+        st.write("No tickers breached threshold this week.")
     else:
-        return [""]*len(row)
+        st.dataframe(out_table.style.apply(highlight_status, axis=1))
+    
+    # ---- Latest news for current outperformers ----
+    if show_news:
+        st.subheader(f"Latest news for current outperformers (> +{threshold_pct}%)")
+        outperf = [r for r in comp_rows if r["aligned"]["diff_cum_pct"].iloc[-1] > threshold_pct]
+    
+        if not outperf:
+            st.write("No current outperformers above threshold.")
+        else:
+            API_KEY = "d38l8ahr01qthpo0bo10d38l8ahr01qthpo0bo1g"  # replace with your key
+            finnhub_client = finnhub.Client(api_key=API_KEY)
+            days_back = 30
+            for r in outperf:
+                t = r["ticker"]
+                st.markdown(f"**{t}**")
+                _from = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
+                _to = datetime.now().strftime('%Y-%m-%d')
+                try:
+                    news = finnhub_client.company_news(symbol=t, _from=_from, to=_to)
+                except Exception as e:
+                    st.write(f"Error fetching news for {t}: {e}")
+                    news = []
+                if not news:
+                    st.write("No news found for this ticker.")
+                else:
+                    for a in news[:5]:
+                        headline = a.get("headline", "No title")
+                        url = a.get("url")
+                        summary = a.get("summary", "No summary available")
+                        date = pd.to_datetime(a.get("datetime", None), unit='s').strftime('%Y-%m-%d') if a.get("datetime") else ""
+                        if url:
+                            st.markdown(f"- [{headline}]({url}) ({date})")
+                        else:
+                            st.markdown(f"- {headline} ({date})")
+                        st.markdown(f"  > {summary}")
+    
+    st.markdown("---")
+    st.caption("Data source: Yahoo Finance via yfinance. Index: Nasdaq Composite (^IXIC).")
 
-st.dataframe(cum_summary_df.style.apply(highlight_cum_status, axis=1))
 
+    
 
-# ---- Out/Underperformers Table ----
-st.subheader(f"Tickers vs NASDAQ ±{threshold_pct}% (latest week)")
-out_table = summary_df[(summary_df["Latest diff (%)"] > threshold_pct) | 
-                       (summary_df["Latest diff (%)"] < -threshold_pct)]
-if out_table.empty:
-    st.write("No tickers breached threshold this week.")
-else:
-    st.dataframe(out_table.style.apply(highlight_status, axis=1))
+######################
+# --- TAB 2: Overall Market Summary ---
+######################
+with tab2:
+    st.header("Overall Market Summary vs NASDAQ")
 
+    # Threshold slider in sidebar
+    threshold = st.sidebar.slider("Out/Underperform threshold (%)", 1, 20, 5)
 
+    # Fetch tickers from Google Sheet
+    sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
+    try:
+        sheet_df = pd.read_csv(sheet_url)
+        tickers_gs = sheet_df.iloc[:, 0].dropna().tolist()
+    except:
+        tickers_gs = ["AAPL","MSFT","TSLA","AMZN","GOOG","META"]
 
-#### new -------------------------------------------------------------------------------------------------------------------------------
+    index_ticker = "^IXIC"
 
-# ---- Auto Out/Underperform Table & Graph (independent of sidebar selection) ----
-st.subheader(f"Auto Out/Underperform Table (Threshold ±{threshold_pct}%) — All tickers")
+    @st.cache_data
+    def fetch_final_returns(tickers, period="6mo"):
+        """Fetch only final cumulative returns to filter over/under performers."""
+        returns = {}
+        try:
+            nasdaq_data = yf.download(index_ticker, period=period)["Adj Close"]
+            nasdaq_return = (nasdaq_data.iloc[-1]/nasdaq_data.iloc[0]-1)*100
+        except:
+            return pd.DataFrame(), 0.0
 
-# Full tickers list for automatic check
-auto_tickers = ["AAPL", "MSFT", "TSLA", "AMZN", "NVDA", "GOOG", "META", "NFLX"]
-
-# Fetch data if not already fetched
-with st.spinner("Fetching data for auto table..."):
-    auto_info = fetch_tickers_info(auto_tickers + [index_ticker])
-
-# Filter by market cap
-auto_filtered = []
-for t in auto_tickers:
-    mcap = auto_info[t]["marketCap"]
-    if mcap is None or mcap < min_mcap * 1e9 or (max_mcap > 0 and mcap > max_mcap*1e9) or auto_info[t]["history"].empty:
-        continue
-    auto_filtered.append(t)
-
-# Prepare auto table
-auto_rows = []
-for t in auto_filtered:
-    s_weekly = weekly_close_pct(auto_info[t]["history"]).sort_index()
-    s_weekly.index = s_weekly.index.date
-    aligned = pd.DataFrame({
-        "stock_weekly_pct": s_weekly,
-        "index_weekly_pct": index_weekly
-    }).dropna().tail(weeks)
-    if aligned.empty:
-        continue
-    aligned["diff_pct"] = aligned["stock_weekly_pct"] - aligned["index_weekly_pct"]
-    aligned["stock_cum_pct"] = cumulative_return(aligned["stock_weekly_pct"])
-    aligned["index_cum_pct"] = cumulative_return(aligned["index_weekly_pct"])
-    aligned["diff_cum_pct"] = aligned["stock_cum_pct"] - aligned["index_cum_pct"]
-    latest_diff = aligned["diff_pct"].iloc[-1]
-    status = "neutral"
-    if latest_diff > threshold_pct:
-        status = "outperform"
-    elif latest_diff < -threshold_pct:
-        status = "underperform"
-    auto_rows.append({
-        "ticker": t,
-        "marketCap": auto_info[t]["marketCap"],
-        "latest_diff_pct": latest_diff,
-        "status": status,
-        "aligned": aligned
-    })
-
-# Build auto summary table
-auto_summary_df = pd.DataFrame([{
-    "Ticker": r["ticker"],
-    "MarketCap (USD)": r["marketCap"],
-    "Latest diff (%)": round(r["latest_diff_pct"], 3),
-    "Status": r["status"]
-} for r in auto_rows]).set_index("Ticker")
-
-def highlight_auto_status(row):
-    if row["Status"] == "outperform":
-        return ["background-color: #d4edda"]*len(row)
-    elif row["Status"] == "underperform":
-        return ["background-color: #f8d7da"]*len(row)
-    else:
-        return [""]*len(row)
-
-st.dataframe(auto_summary_df.style.apply(highlight_auto_status, axis=1))
-
-# ---- Auto Graph ----
-st.subheader("Auto Out/Underperform Graph — All tickers")
-auto_fig = go.Figure()
-for r in auto_rows:
-    df = r["aligned"].reset_index().rename(columns={"index":"date"})
-    auto_fig.add_trace(go.Scatter(
-        x=df["date"],
-        y=df["diff_pct"],
-        mode="lines+markers",
-        name=r["ticker"],
-        hovertemplate="<b>%{text}</b><br>Date: %{x}<br>% diff: %{y:.2f}%%<extra></extra>",
-        text=[r["ticker"]]*len(df)
-    ))
-
-auto_fig.update_layout(
-    xaxis_title="Date (Weekly, Fri close)",
-    yaxis_title="Stock % - NASDAQ % (weekly, % points)",
-    legend_title="Tickers",
-    hovermode="closest", height=500
-)
-st.plotly_chart(auto_fig, use_container_width=True)
-
-#### new -------------------------------------------------------------------------------------------------------------------------------
-# ---- Latest news for current outperformers ----
-if show_news:
-    st.subheader(f"Latest news for current outperformers (> +{threshold_pct}%)")
-    #outperf = [r for r in comp_rows if r["latest_diff_pct"] > threshold_pct]
-    outperf = [r for r in comp_rows if r["aligned"]["diff_cum_pct"].iloc[-1] > threshold_pct]
-
-    if not outperf:
-        st.write("No current outperformers above threshold.")
-    else:
-        API_KEY = "d38l8ahr01qthpo0bo10d38l8ahr01qthpo0bo1g"  # replace with your key
-        finnhub_client = finnhub.Client(api_key=API_KEY)
-        days_back = 30
-        for r in outperf:
-            t = r["ticker"]
-            st.markdown(f"**{t}**")
-            _from = (datetime.now() - timedelta(days=days_back)).strftime('%Y-%m-%d')
-            _to = datetime.now().strftime('%Y-%m-%d')
+        for t in tickers:
             try:
-                news = finnhub_client.company_news(symbol=t, _from=_from, to=_to)
-            except Exception as e:
-                st.write(f"Error fetching news for {t}: {e}")
-                news = []
-            if not news:
-                st.write("No news found for this ticker.")
-            else:
-                for a in news[:5]:
-                    headline = a.get("headline", "No title")
-                    url = a.get("url")
-                    summary = a.get("summary", "No summary available")
-                    date = pd.to_datetime(a.get("datetime", None), unit='s').strftime('%Y-%m-%d') if a.get("datetime") else ""
-                    if url:
-                        st.markdown(f"- [{headline}]({url}) ({date})")
-                    else:
-                        st.markdown(f"- {headline} ({date})")
-                    st.markdown(f"  > {summary}")
+                data = yf.download(t, period=period)["Adj Close"]
+                stock_return = (data.iloc[-1]/data.iloc[0]-1)*100
+                diff = stock_return - nasdaq_return
+                if diff > threshold or diff < -threshold:
+                    returns[t] = {"stock_return": stock_return, "nasdaq_return": nasdaq_return, "diff": diff}
+            except:
+                continue
+        return pd.DataFrame.from_dict(returns, orient="index")
 
-st.markdown("---")
-st.caption("Data source: Yahoo Finance via yfinance. Index: Nasdaq Composite (^IXIC).")
+    # Fetch only tickers that over/under performed
+    perf_df = fetch_final_returns(tickers_gs)
+
+    if perf_df.empty:
+        st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected period.")
+        st.stop()
+
+    # Add status
+    perf_df["Status"] = perf_df["diff"].apply(
+        lambda x: "Outperformer ✅" if x > threshold else "Underperformer ❌"
+    )
+
+    # Round for display
+    perf_df = perf_df.round(2)
+
+    # Show table
+    st.dataframe(perf_df.rename(columns={"stock_return": "Stock Return %", "nasdaq_return": "NASDAQ Return %", "diff": "Difference %"}))
+
+    # Plot cumulative difference chart
+    st.subheader("Cumulative % vs NASDAQ")
+    fig = go.Figure()
+    for t in perf_df.index:
+        try:
+            data = yf.download(t, period="6mo")["Adj Close"]
+            nasdaq_data = yf.download(index_ticker, period="6mo")["Adj Close"]
+            cum_diff = (data/data.iloc[0]-1)*100 - (nasdaq_data/nasdaq_data.iloc[0]-1)*100
+            fig.add_trace(go.Scatter(
+                x=cum_diff.index,
+                y=cum_diff,
+                mode="lines+markers",
+                name=t
+            ))
+        except:
+            continue
+
+    # Threshold lines
+    fig.add_hline(y=threshold, line=dict(color="green", dash="dash"), annotation_text=f"+{threshold}%")
+    fig.add_hline(y=-threshold, line=dict(color="red", dash="dash"), annotation_text=f"-{threshold}%")
+
+    fig.update_layout(
+        yaxis_title="Cumulative % vs NASDAQ",
+        xaxis_title="Date",
+        legend_title="Tickers",
+        height=600
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
