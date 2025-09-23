@@ -89,10 +89,10 @@ for t in tickers:
 
 #------------------------------------------------------------- ye change krlena for control option -------------------------------------------------------
 
-# if len(filtered) == 0:
-#     st.error("No tickers passed the market-cap filter or had usable price data. See reasons below.")
-#     st.write(pd.DataFrame.from_dict(filtered_reasons, orient="index", columns=["reason"]))
-#     st.stop()
+if len(filtered) == 0:
+    st.error("No tickers passed the market-cap filter or had usable price data. See reasons below.")
+    st.write(pd.DataFrame.from_dict(filtered_reasons, orient="index", columns=["reason"]))
+    st.stop()
 
 
 
@@ -113,67 +113,7 @@ def cumulative_return(pct_series):
     return (factor - 1) * 100
 
 
-###################################################################################################################### ye very new 
-# ---- Build comp_rows ----
-comp_rows = []
-for t in filtered:
-    s_weekly = weekly_close_pct(info[t]["history"]).sort_index()
-    s_weekly.index = s_weekly.index.date
-    aligned = pd.DataFrame({
-        "stock_weekly_pct": s_weekly,
-        "index_weekly_pct": index_weekly
-    }).dropna().tail(weeks)
-    if aligned.empty:
-        continue
-    aligned["diff_pct"] = aligned["stock_weekly_pct"] - aligned["index_weekly_pct"]
-    aligned["stock_cum_pct"] = cumulative_return(aligned["stock_weekly_pct"])
-    aligned["index_cum_pct"] = cumulative_return(aligned["index_weekly_pct"])
-    aligned["diff_cum_pct"] = aligned["stock_cum_pct"] - aligned["index_cum_pct"]
-    latest_diff = aligned["diff_pct"].iloc[-1]
-    avg_diff = aligned["diff_pct"].mean()
-    status = "neutral"
-    if latest_diff > threshold_pct:
-        status = "outperform"
-    elif latest_diff < -threshold_pct:
-        status = "underperform"
-    comp_rows.append({
-        "ticker": t,
-        "marketCap": info[t]["marketCap"],
-        "weeks_available": len(aligned),
-        "avg_diff_pct": avg_diff,
-        "latest_diff_pct": latest_diff,
-        "status": status,
-        "aligned": aligned
-    })
 
-# ✅ NOW place the check here (after comp_rows is built)
-if len(comp_rows) == 0:
-    st.warning("No aligned weekly data for selected tickers and index in the requested range.")
-else:
-    # ---- Summary Table ----
-    summary_df = pd.DataFrame([{
-        "Ticker": r["ticker"],
-        "MarketCap (USD)": r["marketCap"],
-        "Weeks": r["weeks_available"],
-        "Avg diff (%)": round(r["avg_diff_pct"], 3),
-        "Latest diff (%)": round(r["latest_diff_pct"], 3),
-        "Status": r["status"]
-    } for r in comp_rows]).set_index("Ticker")
-
-    def highlight_status(row):
-        if row["Status"] == "outperform":
-            return ["background-color: #d4edda"]*len(row)
-        elif row["Status"] == "underperform":
-            return ["background-color: #f8d7da"]*len(row)
-        else:
-            return [""]*len(row)
-
-    st.subheader("Weekly comparison summary")
-    st.dataframe(summary_df.style.apply(highlight_status, axis=1))
-
-    # … continue with your weekly charts, details, etc.
-
-##################################################################################### -----------------------------------
 
 # Index weekly 
 index_weekly = weekly_close_pct(info[index_ticker]["history"])
