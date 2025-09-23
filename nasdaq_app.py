@@ -306,10 +306,101 @@ with tab1:
 
     
 
+# ######################
+# # --- TAB 2: Overall Market Summary ---
+# ######################
+# with tab2:
+#     st.header("Overall Market Summary vs NASDAQ")
+
+#     # Threshold slider in sidebar
+#     threshold = st.sidebar.slider("Out/Underperform threshold (%)", 1, 20, 5)
+
+#     # Fetch tickers from Google Sheet
+#     sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
+#     try:
+#         sheet_df = pd.read_csv(sheet_url)
+#         tickers_gs = sheet_df.iloc[:, 0].dropna().tolist()
+#     except:
+#         tickers_gs = ["AAPL","MSFT","TSLA","AMZN","GOOG","META"]
+
+#     index_ticker = "^IXIC"
+
+#     @st.cache_data
+#     def fetch_final_returns(tickers, period="6mo"):
+#         """Fetch only final cumulative returns to filter over/under performers."""
+#         returns = {}
+#         try:
+#             nasdaq_data = yf.download(index_ticker, period=period)["Adj Close"]
+#             nasdaq_return = (nasdaq_data.iloc[-1]/nasdaq_data.iloc[0]-1)*100
+#         except:
+#             return pd.DataFrame(), 0.0
+
+#         for t in tickers:
+#             try:
+#                 data = yf.download(t, period=period)["Adj Close"]
+#                 stock_return = (data.iloc[-1]/data.iloc[0]-1)*100
+#                 diff = stock_return - nasdaq_return
+#                 if diff > threshold or diff < -threshold:
+#                     returns[t] = {"stock_return": stock_return, "nasdaq_return": nasdaq_return, "diff": diff}
+#             except:
+#                 continue
+#         return pd.DataFrame.from_dict(returns, orient="index")
+
+#     # Fetch only tickers that over/under performed
+#     perf_df = fetch_final_returns(tickers_gs)
+
+#     if perf_df.empty:
+#         st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected period.")
+#         st.stop()
+
+#     # Add status
+#     perf_df["Status"] = perf_df["diff"].apply(
+#         lambda x: "Outperformer ✅" if x > threshold else "Underperformer ❌"
+#     )
+
+#     # Round for display
+#     perf_df = perf_df.round(2)
+
+#     # Show table
+#     st.dataframe(perf_df.rename(columns={"stock_return": "Stock Return %", "nasdaq_return": "NASDAQ Return %", "diff": "Difference %"}))
+
+#     # Plot cumulative difference chart
+#     st.subheader("Cumulative % vs NASDAQ")
+#     fig = go.Figure()
+#     for t in perf_df.index:
+#         try:
+#             data = yf.download(t, period="6mo")["Adj Close"]
+#             nasdaq_data = yf.download(index_ticker, period="6mo")["Adj Close"]
+#             cum_diff = (data/data.iloc[0]-1)*100 - (nasdaq_data/nasdaq_data.iloc[0]-1)*100
+#             fig.add_trace(go.Scatter(
+#                 x=cum_diff.index,
+#                 y=cum_diff,
+#                 mode="lines+markers",
+#                 name=t
+#             ))
+#         except:
+#             continue
+
+#     # Threshold lines
+#     fig.add_hline(y=threshold, line=dict(color="green", dash="dash"), annotation_text=f"+{threshold}%")
+#     fig.add_hline(y=-threshold, line=dict(color="red", dash="dash"), annotation_text=f"-{threshold}%")
+
+#     fig.update_layout(
+#         yaxis_title="Cumulative % vs NASDAQ",
+#         xaxis_title="Date",
+#         legend_title="Tickers",
+#         height=600
+#     )
+#     st.plotly_chart(fig, use_container_width=True)
+
 ######################
 # --- TAB 2: Overall Market Summary ---
 ######################
+######################
+# --- TAB 2: Overall Market Summary vs NASDAQ ---
+######################
 with tab2:
+
     st.header("Overall Market Summary vs NASDAQ")
 
     # Threshold slider in sidebar
@@ -318,78 +409,90 @@ with tab2:
     # Fetch tickers from Google Sheet
     sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
     try:
-        sheet_df = pd.read_csv(sheet_url)
-        tickers_gs = sheet_df.iloc[:, 0].dropna().tolist()
+        tickers_df = pd.read_csv(sheet_url)
+        tickers_gs = tickers_df.iloc[:, 0].dropna().tolist()
     except:
+        st.warning("Could not load tickers from Google Sheet. Using defaults.")
         tickers_gs = ["AAPL","MSFT","TSLA","AMZN","GOOG","META"]
 
     index_ticker = "^IXIC"
+    period = "6mo"
 
     @st.cache_data
-    def fetch_final_returns(tickers, period="6mo"):
-        """Fetch only final cumulative returns to filter over/under performers."""
-        returns = {}
-        try:
-            nasdaq_data = yf.download(index_ticker, period=period)["Adj Close"]
-            nasdaq_return = (nasdaq_data.iloc[-1]/nasdaq_data.iloc[0]-1)*100
-        except:
-            return pd.DataFrame(), 0.0
-
+    def get_weekly_prices(tickers, period="6mo"):
+        """Fetch weekly closing prices for tickers and index."""
+        all_prices = pd.DataFrame()
         for t in tickers:
             try:
-                data = yf.download(t, period=period)["Adj Close"]
-                stock_return = (data.iloc[-1]/data.iloc[0]-1)*100
-                diff = stock_return - nasdaq_return
-                if diff > threshold or diff < -threshold:
-                    returns[t] = {"stock_return": stock_return, "nasdaq_return": nasdaq_return, "diff": diff}
+                data = yf.Ticker(t).history(period=period)["Close"]
+                weekly = data.resample("W-FRI").last()
+                all_prices[t] = weekly
             except:
                 continue
-        return pd.DataFrame.from_dict(returns, orient="index")
+        return all_prices
 
-    # Fetch only tickers that over/under performed
-    perf_df = fetch_final_returns(tickers_gs)
+    with st.spinner("Fetching weekly prices..."):
+        prices_df = get_weekly_prices(tickers_gs + [index_ticker], period=period)
 
-    if perf_df.empty:
-        st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected period.")
+    if prices_df.empty:
+        st.info("No data available for selected tickers.")
         st.stop()
 
-    # Add status
-    perf_df["Status"] = perf_df["diff"].apply(
-        lambda x: "Outperformer ✅" if x > threshold else "Underperformer ❌"
+    # Compute cumulative % change (compounded) vs NASDAQ
+    cum_df = pd.DataFrame()
+    for t in tickers_gs:
+        if t in prices_df.columns:
+            stock_cum = (prices_df[t] / prices_df[t].iloc[0] - 1) * 100
+            index_cum = (prices_df[index_ticker] / prices_df[index_ticker].iloc[0] - 1) * 100
+            cum_df[t] = stock_cum - index_cum
+
+    if cum_df.empty:
+        st.info("No cumulative data could be calculated.")
+        st.stop()
+
+    # Last row = latest cumulative difference vs NASDAQ
+    latest_diff = cum_df.iloc[-1]
+    summary_df = pd.DataFrame({
+        "Cumulative % vs NASDAQ": latest_diff.round(2)
+    })
+    summary_df["Status"] = summary_df["Cumulative % vs NASDAQ"].apply(
+        lambda x: "Outperformer ✅" if x > threshold else ("Underperformer ❌" if x < -threshold else "Neutral")
     )
 
-    # Round for display
-    perf_df = perf_df.round(2)
+    st.subheader(f"Cumulative Performance Summary (Threshold ±{threshold}%)")
+    st.dataframe(summary_df)
 
-    # Show table
-    st.dataframe(perf_df.rename(columns={"stock_return": "Stock Return %", "nasdaq_return": "NASDAQ Return %", "diff": "Difference %"}))
+    # Filter for only tickers breaching threshold
+    perf_table = summary_df[
+        (summary_df["Cumulative % vs NASDAQ"] >= threshold) |
+        (summary_df["Cumulative % vs NASDAQ"] <= -threshold)
+    ]
+    if perf_table.empty:
+        st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected period.")
+    else:
+        st.subheader(f"Tickers breaching ±{threshold}%")
+        st.dataframe(perf_table)
 
-    # Plot cumulative difference chart
-    st.subheader("Cumulative % vs NASDAQ")
+    # Plot cumulative % difference chart
+    st.subheader("Cumulative % vs NASDAQ — Compounded")
     fig = go.Figure()
-    for t in perf_df.index:
-        try:
-            data = yf.download(t, period="6mo")["Adj Close"]
-            nasdaq_data = yf.download(index_ticker, period="6mo")["Adj Close"]
-            cum_diff = (data/data.iloc[0]-1)*100 - (nasdaq_data/nasdaq_data.iloc[0]-1)*100
-            fig.add_trace(go.Scatter(
-                x=cum_diff.index,
-                y=cum_diff,
-                mode="lines+markers",
-                name=t
-            ))
-        except:
-            continue
-
+    for t in cum_df.columns:
+        fig.add_trace(go.Scatter(
+            x=cum_df.index,
+            y=cum_df[t],
+            mode="lines+markers",
+            name=t
+        ))
     # Threshold lines
-    fig.add_hline(y=threshold, line=dict(color="green", dash="dash"), annotation_text=f"+{threshold}%")
-    fig.add_hline(y=-threshold, line=dict(color="red", dash="dash"), annotation_text=f"-{threshold}%")
-
+    fig.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
+    fig.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
     fig.update_layout(
         yaxis_title="Cumulative % vs NASDAQ",
-        xaxis_title="Date",
+        xaxis_title="Week End Date",
         legend_title="Tickers",
         height=600
     )
     st.plotly_chart(fig, use_container_width=True)
+
+
 
