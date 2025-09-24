@@ -34,16 +34,16 @@ with tab1:
         st.warning(f"Could not load tickers from Google Sheet: {e}")
         available_tickers = ["AAPL", "MSFT", "TSLA", "AMZN", "NVDA", "GOOG", "META", "NFLX"]
     
-    tickers = st.sidebar.multiselect("Select tickers", available_tickers, default=available_tickers[:3])
+    tickers = st.sidebar.multiselect("Select tickers 💹", available_tickers, default=available_tickers[:3])
     
-    # Market cap range
-    st.sidebar.subheader("Market Cap Filter (USD Billions)")
-    min_mcap = st.sidebar.number_input("Min market cap", value=5.0, min_value=0.0, step=0.5)
-    max_mcap = st.sidebar.number_input("Max market cap (0 = no limit)", value=0.0, min_value=0.0, step=0.5)
+    # # Market cap range
+    # st.sidebar.subheader("Market Cap Filter (USD Billions)")
+    # min_mcap = st.sidebar.number_input("Min market cap", value=5.0, min_value=0.0, step=0.5)
+    # max_mcap = st.sidebar.number_input("Max market cap (0 = no limit)", value=0.0, min_value=0.0, step=0.5)
     
     # Weeks and thresholds
-    weeks = st.sidebar.slider("Number of weeks to compare (weekly granularity)", min_value=1, max_value=52, value=12)
-    show_news = st.sidebar.checkbox("Fetch latest news for overperformers", value=True)
+    weeks = st.sidebar.slider("Select Weeks 🗓️", min_value=1, max_value=52, value=12)
+    show_news = st.sidebar.checkbox("Fetch latest news for overperformers 🚀", value=True)
     compare_range = st.sidebar.selectbox("Quick range", options=["Past week", "Past 3 months", "Custom weeks"], index=2)
     if compare_range == "Past week":
         weeks = 1
@@ -51,7 +51,7 @@ with tab1:
         weeks = 12
     
     st.sidebar.markdown("---")
-    st.sidebar.markdown("Defaults: market cap = 5B, out/underperform threshold = ±5%")
+    st.sidebar.markdown("Select Threshold 💯")
     threshold_pct = st.sidebar.number_input("Out/Underperform threshold (%)", value=5.0, min_value=0.1, step=0.1)
     
     # ---- Main ----
@@ -72,13 +72,13 @@ with tab1:
                 data = tk.history(period="5y", auto_adjust=False)
             except Exception:
                 data = pd.DataFrame()
-            try:
-                mc = tk.info.get("marketCap", None)
-            except Exception:
-                mc = None
+            # try:
+            #     mc = tk.info.get("marketCap", None)
+            # except Exception:
+            #     mc = None
             info[t] = {
                 "history": data,
-                "marketCap": mc
+                # "marketCap": mc
             }
         return info
     
@@ -89,27 +89,32 @@ with tab1:
     
     # Filter tickers by market cap and data availability
     filtered = []
-    filtered_reasons = {}
-    for t in tickers:
-        mcap = info[t]["marketCap"]
-        if mcap is None:
-            filtered_reasons[t] = "market cap unknown"
-            continue
-        if mcap < min_mcap * 1e9:
-            filtered_reasons[t] = f"market cap {mcap:.0f} < {min_mcap*1e9:.0f}"
-            continue
-        if max_mcap > 0 and mcap > max_mcap * 1e9:
-            filtered_reasons[t] = f"market cap {mcap:.0f} > {max_mcap*1e9:.0f}"
-            continue
-        if info[t]["history"].empty:
-            filtered_reasons[t] = "no price history"
-            continue
-        filtered.append(t)
-    
+    filtered = [t for t in tickers if not info[t]["history"].empty]
     if len(filtered) == 0:
-        st.error("No tickers passed the market-cap filter or had usable price data. See reasons below.")
-        st.write(pd.DataFrame.from_dict(filtered_reasons, orient="index", columns=["reason"]))
+        st.error("No tickers had usable price data.")
         st.stop()
+
+    # filtered_reasons = {}
+    # for t in tickers:
+    #     mcap = info[t]["marketCap"]
+    #     if mcap is None:
+    #         filtered_reasons[t] = "market cap unknown"
+    #         continue
+    #     if mcap < min_mcap * 1e9:
+    #         filtered_reasons[t] = f"market cap {mcap:.0f} < {min_mcap*1e9:.0f}"
+    #         continue
+    #     if max_mcap > 0 and mcap > max_mcap * 1e9:
+    #         filtered_reasons[t] = f"market cap {mcap:.0f} > {max_mcap*1e9:.0f}"
+    #         continue
+    #     if info[t]["history"].empty:
+    #         filtered_reasons[t] = "no price history"
+    #         continue
+    #     filtered.append(t)
+    
+    # if len(filtered) == 0:
+    #     st.error("No tickers passed the market-cap filter or had usable price data. See reasons below.")
+    #     st.write(pd.DataFrame.from_dict(filtered_reasons, orient="index", columns=["reason"]))
+    #     st.stop()
     
     # ---- Weekly % changes ----
     def weekly_close_pct(df):
@@ -157,7 +162,7 @@ with tab1:
             status = "underperform"
         comp_rows.append({
             "ticker": t,
-            "marketCap": info[t]["marketCap"],
+            # "marketCap": info[t]["marketCap"],
             "weeks_available": len(aligned),
             "avg_diff_pct": avg_diff,
             "latest_diff_pct": latest_diff,
@@ -172,7 +177,7 @@ with tab1:
     # ---- Summary Table ----
     summary_df = pd.DataFrame([{
         "Ticker": r["ticker"],
-        "MarketCap (USD)": r["marketCap"],
+        #"MarketCap (USD)": r["marketCap"],
         "Weeks": r["weeks_available"],
         "Avg diff (%)": round(r["avg_diff_pct"], 3),
         "Latest diff (%)": round(r["latest_diff_pct"], 3),
@@ -251,7 +256,7 @@ with tab1:
     # ---- Per-ticker weekly details ----
     st.subheader("Per-ticker weekly details")
     for r in comp_rows:
-        st.markdown(f"**{r['ticker']}** — status: **{r['status']}**, market cap: {r['marketCap']:,}")
+        st.markdown(f"**{r['ticker']}** — status: **{r['status']}**") ### market cap yaha change kya tha ---- market cap: {r['marketCap']:,}
         df = r["aligned"].copy().reset_index().rename(columns={"index":"Week_End_Date"})
         df = df.round(3)
         st.dataframe(df, height=250)
@@ -306,106 +311,109 @@ with tab1:
 
     
 
-# ######################
-# # --- TAB 2: Overall Market Summary ---
-# ######################
-# with tab2:
-#     st.header("Overall Market Summary vs NASDAQ")
 
-#     # Threshold slider in sidebar
-#     threshold = st.sidebar.slider("Out/Underperform threshold (%)", 1, 20, 5)
-
-#     # Fetch tickers from Google Sheet
-#     sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
-#     try:
-#         sheet_df = pd.read_csv(sheet_url)
-#         tickers_gs = sheet_df.iloc[:, 0].dropna().tolist()
-#     except:
-#         tickers_gs = ["AAPL","MSFT","TSLA","AMZN","GOOG","META"]
-
-#     index_ticker = "^IXIC"
-
-#     @st.cache_data
-#     def fetch_final_returns(tickers, period="6mo"):
-#         """Fetch only final cumulative returns to filter over/under performers."""
-#         returns = {}
-#         try:
-#             nasdaq_data = yf.download(index_ticker, period=period)["Adj Close"]
-#             nasdaq_return = (nasdaq_data.iloc[-1]/nasdaq_data.iloc[0]-1)*100
-#         except:
-#             return pd.DataFrame(), 0.0
-
-#         for t in tickers:
-#             try:
-#                 data = yf.download(t, period=period)["Adj Close"]
-#                 stock_return = (data.iloc[-1]/data.iloc[0]-1)*100
-#                 diff = stock_return - nasdaq_return
-#                 if diff > threshold or diff < -threshold:
-#                     returns[t] = {"stock_return": stock_return, "nasdaq_return": nasdaq_return, "diff": diff}
-#             except:
-#                 continue
-#         return pd.DataFrame.from_dict(returns, orient="index")
-
-#     # Fetch only tickers that over/under performed
-#     perf_df = fetch_final_returns(tickers_gs)
-
-#     if perf_df.empty:
-#         st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected period.")
-#         st.stop()
-
-#     # Add status
-#     perf_df["Status"] = perf_df["diff"].apply(
-#         lambda x: "Outperformer ✅" if x > threshold else "Underperformer ❌"
-#     )
-
-#     # Round for display
-#     perf_df = perf_df.round(2)
-
-#     # Show table
-#     st.dataframe(perf_df.rename(columns={"stock_return": "Stock Return %", "nasdaq_return": "NASDAQ Return %", "diff": "Difference %"}))
-
-#     # Plot cumulative difference chart
-#     st.subheader("Cumulative % vs NASDAQ")
-#     fig = go.Figure()
-#     for t in perf_df.index:
-#         try:
-#             data = yf.download(t, period="6mo")["Adj Close"]
-#             nasdaq_data = yf.download(index_ticker, period="6mo")["Adj Close"]
-#             cum_diff = (data/data.iloc[0]-1)*100 - (nasdaq_data/nasdaq_data.iloc[0]-1)*100
-#             fig.add_trace(go.Scatter(
-#                 x=cum_diff.index,
-#                 y=cum_diff,
-#                 mode="lines+markers",
-#                 name=t
-#             ))
-#         except:
-#             continue
-
-#     # Threshold lines
-#     fig.add_hline(y=threshold, line=dict(color="green", dash="dash"), annotation_text=f"+{threshold}%")
-#     fig.add_hline(y=-threshold, line=dict(color="red", dash="dash"), annotation_text=f"-{threshold}%")
-
-#     fig.update_layout(
-#         yaxis_title="Cumulative % vs NASDAQ",
-#         xaxis_title="Date",
-#         legend_title="Tickers",
-#         height=600
-#     )
-#     st.plotly_chart(fig, use_container_width=True)
-
-######################
-# --- TAB 2: Overall Market Summary ---
-######################
 ######################
 # --- TAB 2: Overall Market Summary vs NASDAQ ---
 ######################
 with tab2:
 
+    # st.header("Overall Market Summary vs NASDAQ")
+
+    # # Threshold slider in sidebar
+    # threshold = st.sidebar.slider("Out/Underperform threshold (%)", 1, 20, 5)
+
+    # # Fetch tickers from Google Sheet
+    # sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
+    # try:
+    #     tickers_df = pd.read_csv(sheet_url)
+    #     tickers_gs = tickers_df.iloc[:, 0].dropna().tolist()
+    # except:
+    #     st.warning("Could not load tickers from Google Sheet. Using defaults.")
+    #     tickers_gs = ["AAPL","MSFT","TSLA","AMZN","GOOG","META"]
+
+    # index_ticker = "^IXIC"
+    # period = "6mo"
+
+    # @st.cache_data
+    # def get_weekly_prices(tickers, period="6mo"):
+    #     """Fetch weekly closing prices for tickers and index."""
+    #     all_prices = pd.DataFrame()
+    #     for t in tickers:
+    #         try:
+    #             data = yf.Ticker(t).history(period=period)["Close"]
+    #             weekly = data.resample("W-FRI").last()
+    #             all_prices[t] = weekly
+    #         except:
+    #             continue
+    #     return all_prices
+
+    # with st.spinner("Fetching weekly prices..."):
+    #     prices_df = get_weekly_prices(tickers_gs + [index_ticker], period=period)
+
+    # if prices_df.empty:
+    #     st.info("No data available for selected tickers.")
+    #     st.stop()
+
+    # # Compute cumulative % change (compounded) vs NASDAQ
+    # cum_df = pd.DataFrame()
+    # for t in tickers_gs:
+    #     if t in prices_df.columns:
+    #         stock_cum = (prices_df[t] / prices_df[t].iloc[0] - 1) * 100
+    #         index_cum = (prices_df[index_ticker] / prices_df[index_ticker].iloc[0] - 1) * 100
+    #         cum_df[t] = stock_cum - index_cum
+
+    # if cum_df.empty:
+    #     st.info("No cumulative data could be calculated.")
+    #     st.stop()
+
+    # # Last row = latest cumulative difference vs NASDAQ
+    # latest_diff = cum_df.iloc[-1]
+    # summary_df = pd.DataFrame({
+    #     "Cumulative % vs NASDAQ": latest_diff.round(2)
+    # })
+    # summary_df["Status"] = summary_df["Cumulative % vs NASDAQ"].apply(
+    #     lambda x: "Outperformer ✅" if x > threshold else ("Underperformer ❌" if x < -threshold else "Neutral")
+    # )
+
+    # st.subheader(f"Cumulative Performance Summary (Threshold ±{threshold}%)")
+    # st.dataframe(summary_df)
+
+    # # Filter for only tickers breaching threshold
+    # perf_table = summary_df[
+    #     (summary_df["Cumulative % vs NASDAQ"] >= threshold) |
+    #     (summary_df["Cumulative % vs NASDAQ"] <= -threshold)
+    # ]
+    # if perf_table.empty:
+    #     st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected period.")
+    # else:
+    #     st.subheader(f"Tickers breaching ±{threshold}%")
+    #     st.dataframe(perf_table)
+
+    # # Plot cumulative % difference chart
+    # st.subheader("Cumulative % vs NASDAQ — Compounded")
+    # fig = go.Figure()
+    # for t in cum_df.columns:
+    #     fig.add_trace(go.Scatter(
+    #         x=cum_df.index,
+    #         y=cum_df[t],
+    #         mode="lines+markers",
+    #         name=t
+    #     ))
+    # # Threshold lines
+    # fig.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
+    # fig.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
+    # fig.update_layout(
+    #     yaxis_title="Cumulative % vs NASDAQ",
+    #     xaxis_title="Week End Date",
+    #     legend_title="Tickers",
+    #     height=600
+    # )
+    # st.plotly_chart(fig, use_container_width=True)
     st.header("Overall Market Summary vs NASDAQ")
 
-    # Threshold slider in sidebar
+    # Sidebar inputs
     threshold = st.sidebar.slider("Out/Underperform threshold (%)", 1, 20, 5)
-
+    
     # Fetch tickers from Google Sheet
     sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
     try:
@@ -414,12 +422,12 @@ with tab2:
     except:
         st.warning("Could not load tickers from Google Sheet. Using defaults.")
         tickers_gs = ["AAPL","MSFT","TSLA","AMZN","GOOG","META"]
-
+    
     index_ticker = "^IXIC"
-    period = "6mo"
-
+    period = "2y"   # fetch enough history
+    
     @st.cache_data
-    def get_weekly_prices(tickers, period="6mo"):
+    def get_weekly_prices(tickers, period="2y"):
         """Fetch weekly closing prices for tickers and index."""
         all_prices = pd.DataFrame()
         for t in tickers:
@@ -430,27 +438,56 @@ with tab2:
             except:
                 continue
         return all_prices
-
+    
     with st.spinner("Fetching weekly prices..."):
         prices_df = get_weekly_prices(tickers_gs + [index_ticker], period=period)
-
+    
     if prices_df.empty:
         st.info("No data available for selected tickers.")
         st.stop()
-
-    # Compute cumulative % change (compounded) vs NASDAQ
+    
+    # --- Week mapping ---
+    week_labels = [f"Week {i+1} — {date.strftime('%Y-%m-%d')}" for i, date in enumerate(prices_df.index)]
+    total_weeks = len(week_labels)
+    
+    if total_weeks < 2:
+        st.info("Not enough weeks of data available.")
+        st.stop()
+    
+    # Sidebar range selector (choose start → end week with dates)
+    week_start, week_end = st.sidebar.select_slider(
+        "Select Week Range 🗓️",
+        options=week_labels,
+        value=(week_labels[0], week_labels[min(11, total_weeks-1)])  # default: Week 1 → Week 12
+    )
+    
+    # Convert selected labels back to indices
+    start_idx = week_labels.index(week_start)
+    end_idx = week_labels.index(week_end)
+    
+    # Slice dataframe
+    prices_df = prices_df.iloc[start_idx:end_idx+1]
+    
+    # --- Compute cumulative % change (compounded) vs NASDAQ ---
     cum_df = pd.DataFrame()
     for t in tickers_gs:
         if t in prices_df.columns:
             stock_cum = (prices_df[t] / prices_df[t].iloc[0] - 1) * 100
             index_cum = (prices_df[index_ticker] / prices_df[index_ticker].iloc[0] - 1) * 100
             cum_df[t] = stock_cum - index_cum
-
+    
     if cum_df.empty:
         st.info("No cumulative data could be calculated.")
         st.stop()
-
-    # Last row = latest cumulative difference vs NASDAQ
+    
+    # --- Cumulative moving average (CMA) ---
+    cma_df = cum_df.expanding().mean().round(2)
+    
+    # Show CMA table
+    st.subheader("Cumulative Moving Average (CMA) vs NASDAQ")
+    st.dataframe(cma_df)
+    
+    # --- Latest cumulative difference ---
     latest_diff = cum_df.iloc[-1]
     summary_df = pd.DataFrame({
         "Cumulative % vs NASDAQ": latest_diff.round(2)
@@ -458,41 +495,80 @@ with tab2:
     summary_df["Status"] = summary_df["Cumulative % vs NASDAQ"].apply(
         lambda x: "Outperformer ✅" if x > threshold else ("Underperformer ❌" if x < -threshold else "Neutral")
     )
-
+    
     st.subheader(f"Cumulative Performance Summary (Threshold ±{threshold}%)")
     st.dataframe(summary_df)
-
-    # Filter for only tickers breaching threshold
+    
+    # --- Filter tickers breaching threshold ---
     perf_table = summary_df[
         (summary_df["Cumulative % vs NASDAQ"] >= threshold) |
         (summary_df["Cumulative % vs NASDAQ"] <= -threshold)
     ]
     if perf_table.empty:
-        st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected period.")
+        st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected range.")
     else:
         st.subheader(f"Tickers breaching ±{threshold}%")
         st.dataframe(perf_table)
-
-    # Plot cumulative % difference chart
-    st.subheader("Cumulative % vs NASDAQ — Compounded")
+    
+    # --- Interactive Plot ---
+    st.subheader("Cumulative % vs NASDAQ — Compounded with Moving Average")
     fig = go.Figure()
+    
     for t in cum_df.columns:
+        # Raw cumulative
         fig.add_trace(go.Scatter(
+            x=cum_df.index,
+            y=cum_df[t],
+            mode="lines+markers",
+            name=f"{t} Cumulative"
+        ))
+        # Moving average
+        fig.add_trace(go.Scatter(
+            x=cma_df.index,
+            y=cma_df[t],
+            mode="lines",
+            name=f"{t} CMA",
+            line=dict(dash="dot")
+        ))
+    
+    # Threshold lines
+    fig.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
+    fig.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
+    
+    fig.update_layout(
+        yaxis_title="Cumulative % vs NASDAQ",
+        xaxis_title="Week End Date",
+        legend_title="Tickers",
+        hovermode="x unified",
+        height=600
+    )
+    st.plotly_chart(fig, use_container_width=True)
+
+    # --- Exact Cumulative % Difference Chart from old code ---
+    st.subheader("Cumulative % vs NASDAQ — Compounded (Original Graph)")
+    
+    fig_old = go.Figure()
+    for t in cum_df.columns:
+        fig_old.add_trace(go.Scatter(
             x=cum_df.index,
             y=cum_df[t],
             mode="lines+markers",
             name=t
         ))
+    
     # Threshold lines
-    fig.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
-    fig.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
-    fig.update_layout(
+    fig_old.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
+    fig_old.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
+    
+    fig_old.update_layout(
         yaxis_title="Cumulative % vs NASDAQ",
         xaxis_title="Week End Date",
         legend_title="Tickers",
         height=600
     )
-    st.plotly_chart(fig, use_container_width=True)
+    st.plotly_chart(fig_old, use_container_width=True)
+
+
 
 
 
