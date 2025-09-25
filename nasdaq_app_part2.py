@@ -539,7 +539,7 @@ with tab2:
         yaxis_title="Cumulative % vs NASDAQ",
         xaxis_title="Week End Date",
         legend_title="Tickers",
-        hovermode="x unified",
+        hovermode="closest",
         height=600
     )
     st.plotly_chart(fig, use_container_width=True)
