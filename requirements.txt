@@ -4,3 +4,6 @@ pandas
 numpy
 yfinance
 plotly
+streamlit_plotly_events
+
+
