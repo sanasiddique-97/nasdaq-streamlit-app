@@ -316,174 +316,14 @@ with tab1:
 ######################
 # --- TAB 2: Overall Market Summary vs NASDAQ ---
 ######################
-# with tab2:
-
-    
-#     st.header("Overall Market Summary vs NASDAQ")
-
-#     # Sidebar inputs
-#     threshold = st.sidebar.slider("Out/Underperform threshold (%)", 1, 20, 5)
-    
-#     # Fetch tickers from Google Sheet
-#     sheet_url = "https://docs.google.com/spreadsheets/d/1FWMLpoN3EMDZBL-XQVgMo5wyEQKncwmS3FlZce1CENU/export?format=csv&gid=0"
-#     try:
-#         tickers_df = pd.read_csv(sheet_url)
-#         tickers_gs = tickers_df.iloc[:, 0].dropna().tolist()
-#     except:
-#         st.warning("Could not load tickers from Google Sheet. Using defaults.")
-#         tickers_gs = ["AAPL","MSFT","TSLA","AMZN","GOOG","META"]
-    
-#     index_ticker = "^IXIC"
-#     period = "2y"   # fetch enough history
-    
-#     @st.cache_data
-#     def get_weekly_prices(tickers, period="2y"):
-#         """Fetch weekly closing prices for tickers and index."""
-#         all_prices = pd.DataFrame()
-#         for t in tickers:
-#             try:
-#                 data = yf.Ticker(t).history(period=period)["Close"]
-#                 weekly = data.resample("W-FRI").last()
-#                 all_prices[t] = weekly
-#             except:
-#                 continue
-#         return all_prices
-    
-#     with st.spinner("Fetching weekly prices..."):
-#         prices_df = get_weekly_prices(tickers_gs + [index_ticker], period=period)
-    
-#     if prices_df.empty:
-#         st.info("No data available for selected tickers.")
-#         st.stop()
-    
-#     # --- Week mapping ---
-#     week_labels = [f"Week {i+1} — {date.strftime('%Y-%m-%d')}" for i, date in enumerate(prices_df.index)]
-#     total_weeks = len(week_labels)
-    
-#     if total_weeks < 2:
-#         st.info("Not enough weeks of data available.")
-#         st.stop()
-    
-#     # Sidebar range selector (choose start → end week with dates)
-#     week_start, week_end = st.sidebar.select_slider(
-#         "Select Week Range 🗓️",
-#         options=week_labels,
-#         value=(week_labels[0], week_labels[min(11, total_weeks-1)])  # default: Week 1 → Week 12
-#     )
-    
-#     # Convert selected labels back to indices
-#     start_idx = week_labels.index(week_start)
-#     end_idx = week_labels.index(week_end)
-    
-#     # Slice dataframe
-#     prices_df = prices_df.iloc[start_idx:end_idx+1]
-    
-#     # --- Compute cumulative % change (compounded) vs NASDAQ ---
-#     cum_df = pd.DataFrame()
-#     for t in tickers_gs:
-#         if t in prices_df.columns:
-#             stock_cum = (prices_df[t] / prices_df[t].iloc[0] - 1) * 100
-#             index_cum = (prices_df[index_ticker] / prices_df[index_ticker].iloc[0] - 1) * 100
-#             cum_df[t] = stock_cum - index_cum
-    
-#     if cum_df.empty:
-#         st.info("No cumulative data could be calculated.")
-#         st.stop()
-    
-#     # --- Cumulative moving average (CMA) ---
-#     cma_df = cum_df.expanding().mean().round(2)
-    
-#     # Show CMA table
-#     st.subheader("Cumulative Moving Average (CMA) vs NASDAQ")
-#     st.dataframe(cma_df)
-    
-#     # --- Latest cumulative difference ---
-#     latest_diff = cum_df.iloc[-1]
-#     summary_df = pd.DataFrame({
-#         "Cumulative % vs NASDAQ": latest_diff.round(2)
-#     })
-#     summary_df["Status"] = summary_df["Cumulative % vs NASDAQ"].apply(
-#         lambda x: "Outperformer ✅" if x > threshold else ("Underperformer ❌" if x < -threshold else "Neutral")
-#     )
-    
-#     st.subheader(f"Cumulative Performance Summary (Threshold ±{threshold}%)")
-#     st.dataframe(summary_df)
-    
-#     # --- Filter tickers breaching threshold ---
-#     perf_table = summary_df[
-#         (summary_df["Cumulative % vs NASDAQ"] >= threshold) |
-#         (summary_df["Cumulative % vs NASDAQ"] <= -threshold)
-#     ]
-#     if perf_table.empty:
-#         st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected range.")
-#     else:
-#         st.subheader(f"Tickers breaching ±{threshold}%")
-#         st.dataframe(perf_table)
-    
-#     # --- Interactive Plot ---
-#     st.subheader("Cumulative % vs NASDAQ — Compounded with Moving Average")
-#     fig = go.Figure()
-    
-#     for t in cum_df.columns:
-#         # Raw cumulative
-#         fig.add_trace(go.Scatter(
-#             x=cum_df.index,
-#             y=cum_df[t],
-#             mode="lines+markers",
-#             name=f"{t} Cumulative"
-#         ))
-#         # Moving average
-#         fig.add_trace(go.Scatter(
-#             x=cma_df.index,
-#             y=cma_df[t],
-#             mode="lines",
-#             name=f"{t} CMA",
-#             line=dict(dash="dot")
-#         ))
-    
-#     # Threshold lines
-#     fig.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
-#     fig.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
-    
-#     fig.update_layout(
-#         yaxis_title="Cumulative % vs NASDAQ",
-#         xaxis_title="Week End Date",
-#         legend_title="Tickers",
-#         hovermode="closest",
-#         height=600
-#     )
-#     st.plotly_chart(fig, use_container_width=True)
-
-#     # --- Exact Cumulative % Difference Chart from old code ---
-#     st.subheader("Cumulative % vs NASDAQ — Compounded (Original Graph)")
-    
-#     fig_old = go.Figure()
-#     for t in cum_df.columns:
-#         fig_old.add_trace(go.Scatter(
-#             x=cum_df.index,
-#             y=cum_df[t],
-#             mode="lines+markers",
-#             name=t
-#         ))
-    
-#     # Threshold lines
-#     fig_old.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
-#     fig_old.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
-    
-#     fig_old.update_layout(
-#         yaxis_title="Cumulative % vs NASDAQ",
-#         xaxis_title="Week End Date",
-#         legend_title="Tickers",
-#         height=600
-#     )
-#     st.plotly_chart(fig_old, use_container_width=True)
-
 with tab2:
+
+    
     st.header("Overall Market Summary vs NASDAQ")
 
     # Sidebar inputs
     threshold = st.sidebar.slider("Out/Underperform threshold (%)", 1, 20, 5)
-
+    
     # Fetch tickers from Google Sheet
     sheet_url = "https://docs.google.com/spreadsheets/d/1FWMLpoN3EMDZBL-XQVgMo5wyEQKncwmS3FlZce1CENU/export?format=csv&gid=0"
     try:
@@ -492,10 +332,10 @@ with tab2:
     except:
         st.warning("Could not load tickers from Google Sheet. Using defaults.")
         tickers_gs = ["AAPL","MSFT","TSLA","AMZN","GOOG","META"]
-
+    
     index_ticker = "^IXIC"
-    period = "2y"  # fetch enough history
-
+    period = "2y"   # fetch enough history
+    
     @st.cache_data
     def get_weekly_prices(tickers, period="2y"):
         """Fetch weekly closing prices for tickers and index."""
@@ -508,48 +348,55 @@ with tab2:
             except:
                 continue
         return all_prices
-
+    
     with st.spinner("Fetching weekly prices..."):
         prices_df = get_weekly_prices(tickers_gs + [index_ticker], period=period)
-
+    
     if prices_df.empty:
         st.info("No data available for selected tickers.")
         st.stop()
-
-    # --- Week mapping & range selection ---
+    
+    # --- Week mapping ---
     week_labels = [f"Week {i+1} — {date.strftime('%Y-%m-%d')}" for i, date in enumerate(prices_df.index)]
     total_weeks = len(week_labels)
-
+    
     if total_weeks < 2:
         st.info("Not enough weeks of data available.")
         st.stop()
-
+    
+    # Sidebar range selector (choose start → end week with dates)
     week_start, week_end = st.sidebar.select_slider(
         "Select Week Range 🗓️",
         options=week_labels,
-        value=(week_labels[0], week_labels[min(11, total_weeks-1)])
+        value=(week_labels[0], week_labels[min(11, total_weeks-1)])  # default: Week 1 → Week 12
     )
+    
+    # Convert selected labels back to indices
     start_idx = week_labels.index(week_start)
     end_idx = week_labels.index(week_end)
+    
+    # Slice dataframe
     prices_df = prices_df.iloc[start_idx:end_idx+1]
-
-    # --- Compute cumulative % vs NASDAQ ---
+    
+    # --- Compute cumulative % change (compounded) vs NASDAQ ---
     cum_df = pd.DataFrame()
     for t in tickers_gs:
         if t in prices_df.columns:
             stock_cum = (prices_df[t] / prices_df[t].iloc[0] - 1) * 100
             index_cum = (prices_df[index_ticker] / prices_df[index_ticker].iloc[0] - 1) * 100
             cum_df[t] = stock_cum - index_cum
-
+    
     if cum_df.empty:
         st.info("No cumulative data could be calculated.")
         st.stop()
-
-    # --- Cumulative moving average ---
+    
+    # --- Cumulative moving average (CMA) ---
     cma_df = cum_df.expanding().mean().round(2)
+    
+    # Show CMA table
     st.subheader("Cumulative Moving Average (CMA) vs NASDAQ")
     st.dataframe(cma_df)
-
+    
     # --- Latest cumulative difference ---
     latest_diff = cum_df.iloc[-1]
     summary_df = pd.DataFrame({
@@ -558,30 +405,46 @@ with tab2:
     summary_df["Status"] = summary_df["Cumulative % vs NASDAQ"].apply(
         lambda x: "Outperformer ✅" if x > threshold else ("Underperformer ❌" if x < -threshold else "Neutral")
     )
+    
     st.subheader(f"Cumulative Performance Summary (Threshold ±{threshold}%)")
     st.dataframe(summary_df)
-
-    # --- Interactive Plot with CMA ---
+    
+    # --- Filter tickers breaching threshold ---
+    perf_table = summary_df[
+        (summary_df["Cumulative % vs NASDAQ"] >= threshold) |
+        (summary_df["Cumulative % vs NASDAQ"] <= -threshold)
+    ]
+    if perf_table.empty:
+        st.info(f"No tickers breached ±{threshold}% vs NASDAQ in the selected range.")
+    else:
+        st.subheader(f"Tickers breaching ±{threshold}%")
+        st.dataframe(perf_table)
+    
+    # --- Interactive Plot ---
     st.subheader("Cumulative % vs NASDAQ — Compounded with Moving Average")
     fig = go.Figure()
+    
     for t in cum_df.columns:
+        # Raw cumulative
         fig.add_trace(go.Scatter(
             x=cum_df.index,
             y=cum_df[t],
             mode="lines+markers",
-            name=f"{t} Cumulative",
-            customdata=[t]*len(cum_df)  # store ticker for click events
+            name=f"{t} Cumulative"
         ))
+        # Moving average
         fig.add_trace(go.Scatter(
             x=cma_df.index,
             y=cma_df[t],
             mode="lines",
             name=f"{t} CMA",
-            line=dict(dash="dot"),
-            customdata=[t]*len(cum_df)
+            line=dict(dash="dot")
         ))
+    
+    # Threshold lines
     fig.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
     fig.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
+    
     fig.update_layout(
         yaxis_title="Cumulative % vs NASDAQ",
         xaxis_title="Week End Date",
@@ -589,53 +452,33 @@ with tab2:
         hovermode="closest",
         height=600
     )
-
-    # --- Capture click events ---
-    selected_points = plotly_events(fig, click_event=True, hover_event=False)
     st.plotly_chart(fig, use_container_width=True)
 
-    # --- Mini Drill-Down Page ---
-    if selected_points:
-        clicked_ticker = selected_points[0]["customdata"]
-        st.markdown(f"## 🔍 Detailed View: {clicked_ticker}")
-
-        # Ticker cumulative & CMA
-        ticker_cum = cum_df[clicked_ticker]
-        ticker_cma = cma_df[clicked_ticker]
-
-        # Performance status
-        latest_val = ticker_cum.iloc[-1]
-        status = "Outperformer ✅" if latest_val > threshold else ("Underperformer ❌" if latest_val < -threshold else "Neutral")
-
-        # Display key stats
-        col1, col2, col3 = st.columns(3)
-        col1.metric("Latest Cum % vs NASDAQ", f"{latest_val:.2f}%")
-        col2.metric("Average CMA", f"{ticker_cma.mean():.2f}%")
-        col3.metric("Status", status)
-
-        # Plot ticker chart
-        fig_ticker = go.Figure()
-        fig_ticker.add_trace(go.Scatter(
-            x=ticker_cum.index,
-            y=ticker_cum,
+    # --- Exact Cumulative % Difference Chart from old code ---
+    st.subheader("Cumulative % vs NASDAQ — Compounded (Original Graph)")
+    
+    fig_old = go.Figure()
+    for t in cum_df.columns:
+        fig_old.add_trace(go.Scatter(
+            x=cum_df.index,
+            y=cum_df[t],
             mode="lines+markers",
-            name=f"{clicked_ticker} Cumulative"
+            name=t
         ))
-        fig_ticker.add_trace(go.Scatter(
-            x=ticker_cma.index,
-            y=ticker_cma,
-            mode="lines",
-            name=f"{clicked_ticker} CMA",
-            line=dict(dash="dot")
-        ))
-        fig_ticker.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
-        fig_ticker.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
-        fig_ticker.update_layout(
-            yaxis_title="Cumulative % vs NASDAQ",
-            xaxis_title="Week End Date",
-            height=400
-        )
-        st.plotly_chart(fig_ticker, use_container_width=True)
+    
+    # Threshold lines
+    fig_old.add_hline(y=threshold, line=dict(color="green", dash="dot"), annotation_text=f"+{threshold}%")
+    fig_old.add_hline(y=-threshold, line=dict(color="red", dash="dot"), annotation_text=f"-{threshold}%")
+    
+    fig_old.update_layout(
+        yaxis_title="Cumulative % vs NASDAQ",
+        xaxis_title="Week End Date",
+        legend_title="Tickers",
+        height=600
+    )
+    st.plotly_chart(fig_old, use_container_width=True)
+
+
 
 
 
