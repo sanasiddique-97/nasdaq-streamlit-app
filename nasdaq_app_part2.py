@@ -26,7 +26,7 @@ with tab1:
     st.sidebar.header("Controls")
     
     # --- Fetch tickers from Google Sheet ---
-    sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
+    sheet_url = "https://docs.google.com/spreadsheets/d/1FWMLpoN3EMDZBL-XQVgMo5wyEQKncwmS3FlZce1CENU/export?format=csv&gid=0"
     try:
         sheet_df = pd.read_csv(sheet_url)
         available_tickers = sheet_df.iloc[:, 0].dropna().tolist()
@@ -415,7 +415,7 @@ with tab2:
     threshold = st.sidebar.slider("Out/Underperform threshold (%)", 1, 20, 5)
     
     # Fetch tickers from Google Sheet
-    sheet_url = "https://docs.google.com/spreadsheets/d/1rJmFkLzGJe5IOZ6mGf8jq1NVHRSyuUcrJH8iEvN7UVM/export?format=csv"
+    sheet_url = "https://docs.google.com/spreadsheets/d/1FWMLpoN3EMDZBL-XQVgMo5wyEQKncwmS3FlZce1CENU/export?format=csv&gid=0"
     try:
         tickers_df = pd.read_csv(sheet_url)
         tickers_gs = tickers_df.iloc[:, 0].dropna().tolist()
